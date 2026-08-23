@@ -12,9 +12,13 @@ artifact format always implies a `schemaVersion` change.
 
 ## [Unreleased]
 
-## [0.2.0] — unreleased
+## [0.2.0] — 2026-08-23
 
 Artifact `schemaVersion`: `0.2.0`. **Breaking** relative to the unreleased `0.1.0`; see below.
+
+Tagged as `v0.2.0` and **frozen** as the candidate integration contract for ORAtlas: no field
+changes under this schema version, and anything learned during integration lands in a later one.
+See [`docs/roadmap.md`](docs/roadmap.md).
 
 ### Added
 
@@ -41,6 +45,11 @@ Artifact `schemaVersion`: `0.2.0`. **Breaking** relative to the unreleased `0.1.
 - `validate` now checks `publication.version.sourcesSha256` against the current document set,
   which catches a page added or removed since the last export.
 - New `oratlas.yml` keys: `id`, `version_label`, `source`.
+- **`pnpm run acceptance`** — the freeze's acceptance criterion, run in CI: a fresh external
+  MyST project installs the packed tarball, exports through the installed `bin`, builds with
+  the real theme, serves the three artifacts at its site root, and validates. The only check
+  that exercises the published `files` list, the `bin` entry, and plugin resolution from
+  `node_modules`.
 
 ### Changed
 

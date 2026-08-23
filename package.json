@@ -63,7 +63,8 @@
     "test:watch": "vitest",
     "example:export": "node dist/lib/cli/main.js export --project examples/basic",
     "example:validate": "node dist/lib/cli/main.js validate --project examples/basic",
-    "example:build": "node scripts/build-example.mjs"
+    "example:build": "node scripts/build-example.mjs",
+    "acceptance": "node scripts/acceptance-external.mjs"
   },
   "dependencies": {
     "myst-common": "^1.10.0",

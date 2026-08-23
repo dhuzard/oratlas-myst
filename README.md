@@ -1,5 +1,7 @@
 # @oratlas/myst
 
+[![schema 0.2.0 — frozen](https://img.shields.io/badge/schema-0.2.0%20frozen-informational)](SPEC.md)
+
 **A portable MyST ↔ ORAtlas interoperability adapter.** Declare scientific claims explicitly in
 your MyST source; publish deterministic, machine-readable artifacts that let
 [ORAtlas](https://github.com/dhuzard/oratlas) — or anything else — discover them and bind each

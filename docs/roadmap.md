@@ -13,7 +13,26 @@ cheap to fix while nothing consumed the schema, and expensive after.
 
 ---
 
-## v0.2 — semantic protocol and deterministic export (this release)
+## v0.2 — frozen candidate integration contract (this release)
+
+**Schema `0.2.0` is frozen.** It is the pinned contract ORAtlas implements against, and it does
+not move while that integration is built. Concretely, under `0.2.0`:
+
+- no field is added, removed, renamed or repurposed;
+- no new `adapter.type` or `target.type` variant is defined;
+- no TRUST, assessment, verification, comment, discussion, graph-relation or ORAtlas canonical
+  identifier appears in any artifact;
+- build and validation stay entirely offline.
+
+Anything learned during integration lands in a later `schemaVersion`, not in this one. A
+consumer that implements `0.2.0` can rely on it not changing underneath them.
+
+The acceptance criterion for the freeze runs in CI on every change
+(`pnpm run acceptance`): a fresh external MyST project installs `@oratlas/myst` from the packed
+tarball, exports through the installed `bin`, builds with the real `book-theme`, serves
+`myst.xref.json`, `oratlas.manifest.json` and `oratlas/claims.jsonl` at its site root, and
+validates. It is the only check that exercises the published `files` list, the `bin` entry, and
+the plugin resolving from `node_modules`.
 
 Shipped:
 
