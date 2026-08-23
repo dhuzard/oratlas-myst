@@ -1,0 +1,15 @@
+# Minimal local MyST *site* template.
+#
+# `myst build --site` needs a resolvable site template before it will write
+# `config.json`, `myst.xref.json`, `myst.search.json` and `objects.inv`.
+# Resolving a named theme such as `book-theme` downloads it from
+# api.mystmd.org, which would make the test suite depend on the network and on
+# a third-party service being up. A local template directory short-circuits
+# that lookup, so the integration test exercises MyST's real site build — the
+# same code path that writes the real cross-reference inventory — while staying
+# hermetic. It renders no HTML, which the test does not need: it asserts on the
+# generated JSON, not on a theme's markup.
+version: "1"
+kind: site
+myst: v1
+title: Offline test site template

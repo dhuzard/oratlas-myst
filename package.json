@@ -1,0 +1,92 @@
+{
+  "name": "@oratlas/myst",
+  "version": "0.1.0",
+  "description": "Portable MyST <-> ORAtlas interoperability adapter: declare scientific claims in MyST source and export deterministic, machine-readable federation artifacts.",
+  "keywords": [
+    "myst",
+    "mystmd",
+    "oratlas",
+    "scholarly-publishing",
+    "knowledge-graph",
+    "claims"
+  ],
+  "homepage": "https://github.com/dhuzard/oratlas-myst#readme",
+  "bugs": "https://github.com/dhuzard/oratlas-myst/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dhuzard/oratlas-myst.git"
+  },
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/lib/index.d.ts",
+      "import": "./dist/lib/index.js"
+    },
+    "./plugin": {
+      "types": "./dist/lib/plugin.d.ts",
+      "import": "./dist/lib/plugin.js"
+    },
+    "./contracts": {
+      "types": "./dist/lib/contracts/index.d.ts",
+      "import": "./dist/lib/contracts/index.js"
+    },
+    "./oratlas-myst.mjs": "./dist/oratlas-myst.mjs",
+    "./schemas/*": "./schemas/*"
+  },
+  "bin": {
+    "oratlas-myst": "./dist/lib/cli/main.js"
+  },
+  "files": [
+    "dist",
+    "schemas",
+    "SPEC.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build:lib": "tsc -p tsconfig.build.json",
+    "build:plugin": "node scripts/bundle-plugin.mjs",
+    "build": "pnpm run clean && pnpm run build:lib && pnpm run build:plugin",
+    "schemas": "tsx scripts/generate-schemas.ts",
+    "schemas:check": "tsx scripts/generate-schemas.ts --check",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "example:export": "node dist/lib/cli/main.js export --project examples/basic",
+    "example:validate": "node dist/lib/cli/main.js validate --project examples/basic",
+    "example:build": "node scripts/build-example.mjs"
+  },
+  "dependencies": {
+    "myst-common": "^1.10.0",
+    "myst-parser": "^1.7.3",
+    "vfile": "^5.3.7",
+    "yaml": "^2.6.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.14.0",
+    "@types/node": "^22.9.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "esbuild": "^0.24.0",
+    "eslint": "^9.14.0",
+    "eslint-config-prettier": "^9.1.0",
+    "mystmd": "^1.10.1",
+    "prettier": "^3.3.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.13.0",
+    "vitest": "^2.1.4",
+    "zod-to-json-schema": "^3.23.5"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

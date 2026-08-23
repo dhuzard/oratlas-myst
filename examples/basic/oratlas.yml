@@ -1,0 +1,8 @@
+# Configuration for @oratlas/myst.
+#
+# A dedicated file rather than a namespaced key in myst.yml: MyST validates
+# project keys strictly and prints "extra key ignored" for anything it does not
+# recognise, which would mean a warning on every build.
+
+canonical_url: https://example.org/adolescent-stress/
+output: .oratlas

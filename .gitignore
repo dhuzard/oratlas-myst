@@ -1,0 +1,22 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# MyST build output
+_build/
+.myst/
+
+# Generated ORAtlas interoperability artifacts.
+#
+# These are a deterministic function of the source, rebuilt by
+# `oratlas-myst export`, and are published from the built site rather than from
+# the repository. A publication that prefers to review them in diffs can commit
+# them instead: `oratlas-myst validate` then catches any drift from source.
+.oratlas/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.log

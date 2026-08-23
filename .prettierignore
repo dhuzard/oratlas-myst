@@ -1,0 +1,7 @@
+dist/
+node_modules/
+coverage/
+_build/
+.oratlas/
+pnpm-lock.yaml
+schemas/*.json
