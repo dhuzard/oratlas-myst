@@ -8,7 +8,7 @@ import {
 } from "./primitives.js";
 
 /** Schema version of a single `oratlas/claims.jsonl` record. */
-export const CLAIM_RECORD_SCHEMA_VERSION = "0.1.0";
+export const CLAIM_RECORD_SCHEMA_VERSION = "0.2.0";
 
 /**
  * The frame that `selector.textQuote` and `selector.textPosition` are
@@ -82,15 +82,26 @@ export const claimSourceSchema = z
   });
 export type ClaimSource = z.infer<typeof claimSourceSchema>;
 
-/** The MyST cross-reference target the claim is addressable by. */
-export const claimTargetSchema = z
+/**
+ * The addressable target the claim occupies in the published document.
+ *
+ * A discriminated union rather than a bare MyST shape: a JATS or Quarto
+ * adapter would name its target differently, and ORAtlas normalises every
+ * variant into one generic source-occurrence representation. Every variant
+ * carries `identifier`, which is what joins a claim record to the toolchain's
+ * own cross-reference inventory.
+ */
+export const mystXrefTargetSchema = z
   .object({
+    type: z.literal("myst-xref"),
     /** MyST target identifier; equal to the record `id`. */
     identifier: localClaimIdSchema,
     /** DOM id MyST generates for that identifier in a web build. */
     htmlId: z.string().min(1).max(300),
   })
   .strict();
+
+export const claimTargetSchema = z.discriminatedUnion("type", [mystXrefTargetSchema]);
 export type ClaimTarget = z.infer<typeof claimTargetSchema>;
 
 export const claimSelectorSchema = z

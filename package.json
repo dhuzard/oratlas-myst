@@ -1,6 +1,6 @@
 {
   "name": "@oratlas/myst",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Portable MyST <-> ORAtlas interoperability adapter: declare scientific claims in MyST source and export deterministic, machine-readable federation artifacts.",
   "keywords": [
     "myst",
@@ -48,7 +48,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "clean": "rm -rf dist",
+    "clean": "node scripts/clean.mjs",
     "build:lib": "tsc -p tsconfig.build.json",
     "build:plugin": "node scripts/bundle-plugin.mjs",
     "build": "pnpm run clean && pnpm run build:lib && pnpm run build:plugin",

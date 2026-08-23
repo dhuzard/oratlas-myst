@@ -1,6 +1,6 @@
 # Architecture
 
-This document records the decisions behind `@oratlas/myst` v0.1 and the MyST behaviour they
+This document records the decisions behind `@oratlas/myst` v0.2 and the MyST behaviour they
 were verified against. Where a decision departs from what seemed obvious at the outset, the
 reason is stated.
 
@@ -257,7 +257,102 @@ be generated but never served.
 
 ---
 
-## 7. Configuration: why `oratlas.yml`, not `myst.yml`
+## 7. Decision F — publication identity, version and source
+
+Added in v0.2 after review. The v0.1 manifest carried only an optional `canonicalUrl` and
+title, which is not enough for ORAtlas to tell one publication from another, or version 1 of a
+publication from version 2.
+
+**A URL is not identity.** A publication can move, be mirrored, or be served from several
+hosts, and two publications can occupy one URL at different times. So the manifest carries
+three separate things:
+
+- `publication.id` — _which publication this is_, stable across versions. Author-declared,
+  defaulting to `myst.yml`'s `project.id`. Source-local, never minted by the adapter.
+- `publication.version.sourcesSha256` — _which version this is_. Always present: a digest over
+  the document set (`{path, sha256}` sorted by path), so an exact version identity exists even
+  for a plain website with no repository, DOI or archive.
+- `publication.source` — _where the source bytes are_, as a discriminated union over `git`,
+  `doi` and `archive`.
+
+**The two verification levels.** This is the substantive reason the source descriptor exists. A
+deployed MyST site serves HTML, page JSON, `myst.xref.json` and the ORAtlas artifacts — it does
+_not_ serve `results.md`. So a claim record can say `results.md` has digest `abc…` while a
+consumer holding only the site has no way to obtain those bytes and check it.
+
+```
+Level 1 — published-structure verification        (every consumer)
+    manifest + claims.jsonl + xref + page JSON
+        └── the claim exists in the published structure, at a resolvable location
+
+Level 2 — source-byte verification                (needs publication.source)
+    + the source repository, deposit or archive
+        └── documentSha256, blockSha256, declarationSha256 and the selectors
+```
+
+A journal site with no public Markdown is a first-class graph participant at level 1; a
+git-backed publication additionally reaches level 2. `tests/published-structure.test.ts` runs
+level 1 against a real MyST build using only published bytes, with the source deliberately out
+of reach.
+
+**Why the commit is not auto-detected.** Reading `HEAD` would make the manifest disagree with
+the published bytes whenever the working tree is dirty — exactly the case where provenance
+matters. And the config file naming the commit is itself part of the commit. So `commit` is
+optional and supplied by the build: `oratlas-myst export --source-commit "$GITHUB_SHA"`.
+
+---
+
+## 8. Decision G — keeping the protocol toolchain-neutral
+
+Also added in v0.2. The v0.1 manifest hard-coded MyST into the ingestion contract:
+`myst: { xref }` at the top level, and a bare `{ identifier, htmlId }` target.
+
+That is fine for this package and wrong for the protocol. The intended shape is one ORAtlas
+ingestion contract with several publication-side adapters:
+
+```
+                    ORAtlas protocol
+                          │
+          ┌───────────────┼───────────────┐
+        MyST             JATS           Quarto
+          └───────────────┼───────────────┘
+                          ▼
+                  canonical ORAtlas graph
+```
+
+So both are discriminated unions now:
+
+```json
+"adapter": { "type": "myst", "xref": "myst.xref.json" }
+"target":  { "type": "myst-xref", "identifier": "…", "htmlId": "…" }
+```
+
+A consumer switches on `type` and normalises into one generic source-occurrence
+representation. `identifier` is the field every target variant must carry, because it is what
+joins a claim record to the toolchain's cross-reference inventory. The canonical graph never
+learns which toolchain a publication was authored in.
+
+This was worth breaking the schema for now, while nothing consumes it, rather than after
+ORAtlas has an ingestion contract built around a MyST-shaped manifest.
+
+---
+
+## 9. The inventory URL trap
+
+`myst.xref.json` `url` values are site-root-relative absolute paths. Resolving one directly
+against a canonical URL that has a path silently drops the path:
+
+```js
+new URL("/results", "https://example.org/review/").href; // "https://example.org/results"
+```
+
+Every subpath deploy hits this. `resolvePublishedUrl()` is exported so consumers do not have to
+rediscover it, the rule is normative in [SPEC §6.1](../SPEC.md#61-resolving-an-inventory-url),
+and a test asserts both the trap and the fix. It was found by a test, not by reasoning.
+
+---
+
+## 10. Configuration: why `oratlas.yml`, not `myst.yml`
 
 MyST validates `project` keys strictly. A namespaced block under `project:` produces, on
 **every single build**:
@@ -269,15 +364,18 @@ MyST validates `project` keys strictly. A namespaced block under `project:` prod
 The configuration is ignored _and_ the author gets a permanent warning. That is not a safe
 namespaced extension point, so configuration lives in a dedicated `oratlas.yml`.
 
-The file is entirely optional; the defaults work. Its four keys are `canonical_url`, `output`,
-`review_manifest` and `title`, and an unknown key is a hard error rather than a silent no-op —
-a typo in a config key should not quietly disable the thing it was meant to configure.
+The file is entirely optional; the defaults work. Its keys are `id`, `canonical_url`, `output`,
+`review_manifest`, `title`, `version_label` and `source`, and an unknown key is a hard error
+rather than a silent no-op — a typo in a config key should not quietly disable the thing it was
+meant to configure. The `source` block is validated by the same Zod union that the manifest
+emits, so the config surface and the artifact can never disagree about what a valid source
+descriptor is.
 
 There is no ORAtlas server URL, because nothing here needs one.
 
 ---
 
-## 8. Contracts and schemas
+## 11. Contracts and schemas
 
 Zod schemas in `src/contracts/` are the single definition. The JSON Schemas in `schemas/` are
 generated from them by `scripts/generate-schemas.ts`, with recursively sorted keys so the
@@ -297,13 +395,23 @@ re-implemented here with identical behaviour, each marked as such in the source:
 
 ---
 
-## 9. Security posture
+## 12. Security posture
 
 Publication input is untrusted throughout.
 
-- **Path resolution** (`resolveInsideProject`) checks twice: lexically, and again on the real
-  path after symlink resolution. A symlink inside the project cannot be used to read outside
-  it. Every path from a TOC entry, a config value, or a manifest field goes through it.
+- **Path resolution** (`resolveInsideProject`, in `src/fs-safe.ts`) checks twice: lexically,
+  and again on the real path after symlink resolution. Every path from a TOC entry, a config
+  value, or a manifest field goes through it — including `myst.yml` and `oratlas.yml`
+  themselves, which are publication input like any other file.
+- **Discovery never follows a symlink.** The directory walk uses `lstatSync`, so a symbolic
+  link is seen as a link rather than as whatever it points at, and is skipped. Following one
+  would let a link inside the project walk the filesystem outside it, and a link to an ancestor
+  directory would make the walk unbounded. A skipped link is reported to the author rather than
+  silently dropped; declaring it in `project.toc` makes it an explicit declaration, which is
+  then resolved with the realpath discipline above. A depth cap backs this up.
+- **A refused path is not "absent".** `projectFileExists` lets an unsafe-path error propagate
+  instead of returning false, so a symlinked config file is refused rather than quietly
+  ignored, and an escaping TOC entry reports the traversal rather than "file not found".
 - **Two path rules.** Published paths (things a consumer resolves) use the strict rule that is
   byte-compatible with ORAtlas's validator. Local paths (the output directory, TOC entries)
   use a permissive rule that still forbids escape, absolute paths, backslashes and schemes,
@@ -319,7 +427,7 @@ Publication input is untrusted throughout.
 
 ---
 
-## 10. Determinism
+## 13. Determinism
 
 Byte-identical source and configuration produce byte-identical artifacts. Concretely:
 
@@ -340,7 +448,7 @@ the artifacts. `validate` re-runs the export in memory and compares byte for byt
 
 ---
 
-## 11. MyST compatibility notes
+## 14. MyST compatibility notes
 
 Findings from mystmd 1.10.1, recorded because they constrain the design:
 

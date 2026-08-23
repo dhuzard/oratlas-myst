@@ -30,6 +30,7 @@ export {
   claimSelectorSchema,
   claimSourceSchema,
   claimTargetSchema,
+  mystXrefTargetSchema,
   claimTypeSchema,
   selectorUnitSchema,
 } from "./claims.js";
@@ -44,19 +45,28 @@ export type {
 
 export {
   MANIFEST_SCHEMA_VERSION,
+  adapterSchema,
+  archiveSourceSchema,
   artifactsSchema,
+  doiSourceSchema,
+  gitSourceSchema,
+  mystAdapterSchema,
+  publicationSourceSchema,
+  publicationVersionSchema,
   claimDeclarationAuthoritySchema,
   claimsArtifactSchema,
   generatorSchema,
-  mystSectionSchema,
   oratlasManifestSchema,
   oratlasSectionSchema,
   publicationSchema,
   recognizedReviewManifestSchema,
 } from "./manifest.js";
 export type {
+  Adapter,
   ClaimDeclarationAuthority,
   ClaimsArtifact,
   OratlasManifest,
+  PublicationSource,
+  PublicationVersion,
   RecognizedReviewManifest,
 } from "./manifest.js";

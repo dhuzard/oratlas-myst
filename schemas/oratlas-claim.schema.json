@@ -35,7 +35,7 @@
       "type": "string"
     },
     "schemaVersion": {
-      "const": "0.1.0",
+      "const": "0.2.0",
       "type": "string"
     },
     "selector": {
@@ -145,25 +145,34 @@
       "type": "object"
     },
     "target": {
-      "additionalProperties": false,
-      "properties": {
-        "htmlId": {
-          "maxLength": 300,
-          "minLength": 1,
-          "type": "string"
-        },
-        "identifier": {
-          "maxLength": 120,
-          "minLength": 1,
-          "pattern": "^[a-z0-9][a-z0-9._-]*$",
-          "type": "string"
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "htmlId": {
+              "maxLength": 300,
+              "minLength": 1,
+              "type": "string"
+            },
+            "identifier": {
+              "maxLength": 120,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9._-]*$",
+              "type": "string"
+            },
+            "type": {
+              "const": "myst-xref",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "identifier",
+            "htmlId"
+          ],
+          "type": "object"
         }
-      },
-      "required": [
-        "identifier",
-        "htmlId"
-      ],
-      "type": "object"
+      ]
     },
     "text": {
       "maxLength": 5000,

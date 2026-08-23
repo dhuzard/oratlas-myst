@@ -1,5 +1,3 @@
-import { readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { OratlasMystError } from "./errors.js";
 import {
@@ -8,7 +6,9 @@ import {
   SAFE_LOCAL_PATH_MESSAGE,
   SAFE_RELATIVE_PATH_MESSAGE,
 } from "./contracts/paths.js";
+import { publicationSourceSchema, type PublicationSource } from "./contracts/manifest.js";
 import { httpsUrlSchema } from "./contracts/primitives.js";
+import { projectFileExists, readProjectFile } from "./fs-safe.js";
 
 export const MYST_CONFIG_FILE = "myst.yml";
 export const ORATLAS_CONFIG_FILE = "oratlas.yml";
@@ -18,6 +18,8 @@ export const DEFAULT_OUTPUT_DIR = ".oratlas";
 export const MAX_CONFIG_BYTES = 1_000_000;
 
 export interface OratlasConfig {
+  /** Source-local publication identifier, stable across versions. */
+  id?: string;
   /** Absolute https URL the built publication is served from. */
   canonicalUrl?: string;
   /** Project-relative directory the generated artifacts are written to. */
@@ -29,12 +31,18 @@ export interface OratlasConfig {
   reviewManifest?: string;
   /** Publication title; defaults to the MyST project title. */
   title?: string;
+  /** Author-declared version label for this publication version. */
+  versionLabel?: string;
+  /** Where this publication's exact source bytes can be obtained. */
+  source?: PublicationSource;
 }
 
 export interface MystProjectConfig {
   /** Raw parsed `myst.yml`. */
   raw: Record<string, unknown>;
   title?: string;
+  /** `project.id`, used as the default source-local publication identifier. */
+  id?: string;
   /** `project.toc`, if the project declares one. */
   toc?: unknown;
   /** `project.static_files`, if the project declares any. */
@@ -50,28 +58,26 @@ export interface LoadedConfig {
   hasOratlasConfig: boolean;
 }
 
-function readTextFileBounded(path: string, what: string): string {
-  const stats = statSync(path);
-  if (!stats.isFile()) {
-    throw new OratlasMystError("config-not-a-file", `${what} is not a regular file: ${path}`);
-  }
-  if (stats.size > MAX_CONFIG_BYTES) {
-    throw new OratlasMystError(
-      "config-too-large",
-      `${what} is larger than ${MAX_CONFIG_BYTES} bytes: ${path}`,
-    );
-  }
-  return readFileSync(path, "utf8");
+/**
+ * Read a configuration file through the same safe-path discipline as every
+ * other publication file.
+ *
+ * `myst.yml` and `oratlas.yml` are publication input like any other: if the
+ * security model says publication input is untrusted, a symlinked config file
+ * pointing outside the project must be refused rather than read.
+ */
+function readConfigFile(projectRoot: string, fileName: string): string {
+  return readProjectFile(projectRoot, fileName, MAX_CONFIG_BYTES);
 }
 
-function parseYamlObject(text: string, path: string, what: string): Record<string, unknown> {
+function parseYamlObject(text: string, what: string): Record<string, unknown> {
   let parsed: unknown;
   try {
     parsed = parseYaml(text);
   } catch (error) {
     throw new OratlasMystError(
       "config-unparsable",
-      `${what} is not valid YAML: ${path}`,
+      `${what} is not valid YAML.`,
       error instanceof Error ? error.message : String(error),
     );
   }
@@ -79,7 +85,7 @@ function parseYamlObject(text: string, path: string, what: string): Record<strin
   if (typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new OratlasMystError(
       "config-not-a-mapping",
-      `${what} must contain a YAML mapping at the top level: ${path}`,
+      `${what} must contain a YAML mapping at the top level.`,
     );
   }
   return parsed as Record<string, unknown>;
@@ -97,33 +103,75 @@ function asStringArray(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
-function fileExists(path: string): boolean {
-  try {
-    return statSync(path).isFile();
-  } catch {
-    return false;
-  }
-}
-
 /** Read and validate `myst.yml` from a project root. */
 export function loadMystConfig(projectRoot: string): MystProjectConfig {
-  const path = join(projectRoot, MYST_CONFIG_FILE);
-  if (!fileExists(path)) {
+  if (!projectFileExists(projectRoot, MYST_CONFIG_FILE)) {
     throw new OratlasMystError(
       "myst-config-missing",
       `No ${MYST_CONFIG_FILE} found in ${projectRoot}.`,
       "Run oratlas-myst from a MyST project directory, or pass --project <dir>.",
     );
   }
-  const raw = parseYamlObject(readTextFileBounded(path, MYST_CONFIG_FILE), path, MYST_CONFIG_FILE);
+  const raw = parseYamlObject(readConfigFile(projectRoot, MYST_CONFIG_FILE), MYST_CONFIG_FILE);
   const project = asRecord(raw.project) ?? {};
   const title = typeof project.title === "string" ? project.title : undefined;
+  const id = typeof project.id === "string" && project.id.trim() ? project.id.trim() : undefined;
   return {
     raw,
     ...(title ? { title } : {}),
+    ...(id ? { id } : {}),
     toc: project.toc,
     staticFiles: asStringArray(project.static_files),
   };
+}
+
+function invalid(message: string, detail?: string): OratlasMystError {
+  return new OratlasMystError(
+    "oratlas-config-invalid",
+    `${ORATLAS_CONFIG_FILE}: ${message}`,
+    detail,
+  );
+}
+
+function readString(raw: Record<string, unknown>, key: string, max: number): string | undefined {
+  const value = raw[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw invalid(`'${key}' must be a non-empty string.`);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length > max) {
+    throw invalid(`'${key}' must be at most ${max} characters.`);
+  }
+  return trimmed;
+}
+
+/**
+ * Validate the `source:` block.
+ *
+ * The block is passed to the contract's discriminated union rather than being
+ * re-validated by hand, so the config surface and the emitted manifest can
+ * never disagree about what a valid source descriptor is.
+ */
+function readSource(raw: Record<string, unknown>): PublicationSource | undefined {
+  if (raw.source === undefined) return undefined;
+  const record = asRecord(raw.source);
+  if (!record) {
+    throw invalid("'source' must be a mapping.");
+  }
+  if (typeof record.type !== "string") {
+    throw invalid("'source.type' is required.", "Expected one of: git, doi, archive.");
+  }
+  const parsed = publicationSourceSchema.safeParse(record);
+  if (!parsed.success) {
+    throw invalid(
+      `'source' is not a valid ${String(record.type)} source descriptor.`,
+      parsed.error.issues
+        .map((issue) => `source.${issue.path.join(".") || "(root)"}: ${issue.message}`)
+        .join("; "),
+    );
+  }
+  return parsed.data;
 }
 
 /**
@@ -138,18 +186,24 @@ export function loadOratlasConfig(projectRoot: string): {
   config: OratlasConfig;
   present: boolean;
 } {
-  const path = join(projectRoot, ORATLAS_CONFIG_FILE);
   const defaults: OratlasConfig = { output: DEFAULT_OUTPUT_DIR };
-  if (!fileExists(path)) {
+  if (!projectFileExists(projectRoot, ORATLAS_CONFIG_FILE)) {
     return { config: defaults, present: false };
   }
   const raw = parseYamlObject(
-    readTextFileBounded(path, ORATLAS_CONFIG_FILE),
-    path,
+    readConfigFile(projectRoot, ORATLAS_CONFIG_FILE),
     ORATLAS_CONFIG_FILE,
   );
 
-  const known = new Set(["canonical_url", "output", "review_manifest", "title"]);
+  const known = new Set([
+    "id",
+    "canonical_url",
+    "output",
+    "review_manifest",
+    "title",
+    "version_label",
+    "source",
+  ]);
   const unknown = Object.keys(raw).filter((key) => !known.has(key));
   if (unknown.length > 0) {
     throw new OratlasMystError(
@@ -161,19 +215,22 @@ export function loadOratlasConfig(projectRoot: string): {
 
   const config: OratlasConfig = { ...defaults };
 
-  if (raw.canonical_url !== undefined) {
-    if (typeof raw.canonical_url !== "string") {
-      throw new OratlasMystError(
-        "oratlas-config-invalid",
-        `${ORATLAS_CONFIG_FILE}: 'canonical_url' must be a string.`,
-      );
-    }
-    const parsed = httpsUrlSchema.safeParse(raw.canonical_url);
+  const id = readString(raw, "id", 200);
+  if (id) config.id = id;
+
+  const title = readString(raw, "title", 500);
+  if (title) config.title = title;
+
+  const versionLabel = readString(raw, "version_label", 120);
+  if (versionLabel) config.versionLabel = versionLabel;
+
+  const canonicalUrl = readString(raw, "canonical_url", 2_000);
+  if (canonicalUrl) {
+    const parsed = httpsUrlSchema.safeParse(canonicalUrl);
     if (!parsed.success) {
-      throw new OratlasMystError(
-        "oratlas-config-invalid",
-        `${ORATLAS_CONFIG_FILE}: 'canonical_url' must be an absolute https:// URL.`,
-        `Received: ${raw.canonical_url}`,
+      throw invalid(
+        "'canonical_url' must be an absolute https:// URL.",
+        `Received: ${canonicalUrl}`,
       );
     }
     config.canonicalUrl = parsed.data;
@@ -181,9 +238,8 @@ export function loadOratlasConfig(projectRoot: string): {
 
   if (raw.output !== undefined) {
     if (typeof raw.output !== "string" || !isSafeLocalPath(raw.output)) {
-      throw new OratlasMystError(
-        "oratlas-config-invalid",
-        `${ORATLAS_CONFIG_FILE}: 'output' must be a safe project-relative directory path.`,
+      throw invalid(
+        "'output' must be a safe project-relative directory path.",
         SAFE_LOCAL_PATH_MESSAGE,
       );
     }
@@ -192,24 +248,16 @@ export function loadOratlasConfig(projectRoot: string): {
 
   if (raw.review_manifest !== undefined) {
     if (typeof raw.review_manifest !== "string" || !isSafeRelativePath(raw.review_manifest)) {
-      throw new OratlasMystError(
-        "oratlas-config-invalid",
-        `${ORATLAS_CONFIG_FILE}: 'review_manifest' must be a safe project-relative file path.`,
+      throw invalid(
+        "'review_manifest' must be a safe project-relative file path.",
         SAFE_RELATIVE_PATH_MESSAGE,
       );
     }
     config.reviewManifest = raw.review_manifest;
   }
 
-  if (raw.title !== undefined) {
-    if (typeof raw.title !== "string" || raw.title.trim().length === 0) {
-      throw new OratlasMystError(
-        "oratlas-config-invalid",
-        `${ORATLAS_CONFIG_FILE}: 'title' must be a non-empty string.`,
-      );
-    }
-    config.title = raw.title.trim();
-  }
+  const source = readSource(raw);
+  if (source) config.source = source;
 
   return { config, present: true };
 }

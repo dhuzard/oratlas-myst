@@ -20,6 +20,10 @@ Options:
   --project <dir>   MyST project root (default: current directory)
   --json            Emit machine-readable JSON on stdout
   --no-write        (export) compute everything but write nothing
+  --source-commit <sha>
+                    (export) git object id of the commit being built, for a
+                    publication whose oratlas.yml declares a git source.
+                    Intended for CI, e.g. --source-commit $GITHUB_SHA
   --no-consistency  (validate) skip re-running the export to compare byte for byte
   --version         Print the version
   --help            Print this message
@@ -53,10 +57,11 @@ function reportError(error: unknown): number {
 }
 
 function runExport(options: Record<string, string | boolean>): number {
-  rejectUnknownOptions(options, ["project", "json", "write"]);
+  rejectUnknownOptions(options, ["project", "json", "write", "source-commit"]);
   const projectRoot = projectRootFrom(options);
   const write = optionBoolean(options, "write") ?? true;
-  const result = exportProject({ projectRoot, write });
+  const sourceCommit = optionString(options, "source-commit");
+  const result = exportProject({ projectRoot, write, ...(sourceCommit ? { sourceCommit } : {}) });
 
   if (optionBoolean(options, "json")) {
     process.stdout.write(

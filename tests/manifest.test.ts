@@ -15,10 +15,10 @@ import { cleanupProjects, claim, expectOratlasError, makeProject } from "./helpe
 afterAll(cleanupProjects);
 
 const minimal: OratlasManifest = {
-  schemaVersion: "0.1.0",
-  generator: { name: "@oratlas/myst", version: "0.1.0" },
-  publication: {},
-  myst: { xref: "myst.xref.json" },
+  schemaVersion: "0.2.0",
+  generator: { name: "@oratlas/myst", version: "0.2.0" },
+  publication: { version: { sourcesSha256: sha256("") } },
+  adapter: { type: "myst", xref: "myst.xref.json" },
   artifacts: {
     claims: {
       path: "oratlas/claims.jsonl",
@@ -47,7 +47,7 @@ describe("oratlas.manifest.json schema", () => {
   });
 
   it("rejects an unexpected schema version", () => {
-    const result = oratlasManifestSchema.safeParse({ ...minimal, schemaVersion: "0.2.0" });
+    const result = oratlasManifestSchema.safeParse({ ...minimal, schemaVersion: "0.3.0" });
     expect(result.success).toBe(false);
   });
 
@@ -94,7 +94,7 @@ describe("oratlas.manifest.json schema", () => {
   it("serializes deterministically regardless of key insertion order", () => {
     const shuffled = {
       artifacts: minimal.artifacts,
-      myst: minimal.myst,
+      adapter: minimal.adapter,
       publication: minimal.publication,
       generator: minimal.generator,
       schemaVersion: minimal.schemaVersion,
@@ -108,13 +108,13 @@ describe("generated manifest", () => {
     const root = makeProject({ "index.md": `# I\n\n${claim("only", "A statement.")}` });
     const { manifest } = exportProject({ projectRoot: root, write: false });
     expect(manifest.schemaVersion).toBe(MANIFEST_SCHEMA_VERSION);
-    expect(manifest.generator).toEqual({ name: "@oratlas/myst", version: "0.1.0" });
+    expect(manifest.generator).toEqual({ name: "@oratlas/myst", version: "0.2.0" });
   });
 
   it("points at MyST's own cross-reference inventory without reproducing it", () => {
     const root = makeProject({ "index.md": `# I\n\n${claim("only", "A statement.")}` });
     const { manifest } = exportProject({ projectRoot: root, write: false });
-    expect(manifest.myst.xref).toBe("myst.xref.json");
+    expect(manifest.adapter).toEqual({ type: "myst", xref: "myst.xref.json" });
     // Nothing in the manifest restates a cross-reference target or a URL.
     expect(JSON.stringify(manifest)).not.toContain("references");
   });
@@ -140,7 +140,7 @@ describe("generated manifest", () => {
     exportProject({ projectRoot: root });
     const content = readFileSync(join(root, ".oratlas", MANIFEST_FILE_NAME), "utf8");
     expect(content.endsWith("}\n")).toBe(true);
-    expect(content).toContain('\n  "schemaVersion": "0.1.0",');
+    expect(content).toContain('\n  "schemaVersion": "0.2.0",');
   });
 
   it("carries no mutable or federated ORAtlas state", () => {

@@ -49,6 +49,8 @@ export type { ClaimOccurrence, ClaimProblem, ParsedDocument } from "./parse-clai
 export { CLAIMS_ARTIFACT_PATH, MANIFEST_FILE_NAME, exportProject } from "./export.js";
 export type { ExportOptions, ExportResult } from "./export.js";
 
+export { resolvePublishedUrl } from "./resolve-url.js";
+
 export { validateProject } from "./validate.js";
 export type { ValidateOptions, ValidationIssue, ValidationResult } from "./validate.js";
 
