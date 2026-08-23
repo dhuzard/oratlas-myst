@@ -1,7 +1,13 @@
 # ORAtlas publication interoperability specification, version 0.2
 
-Status: **draft**. Schema version `0.2.0`. Breaking changes are expected before 1.0;
-see [`docs/roadmap.md`](docs/roadmap.md).
+Status: **frozen candidate integration contract**. Schema version `0.2.0`, released as
+[`v0.2.0`](https://github.com/dhuzard/oratlas-myst/releases/tag/v0.2.0).
+
+This version is the pinned contract ORAtlas implements against. It is deliberately closed to
+new features while that integration is built: no field is added, removed or repurposed under
+`0.2.0`, and anything learned during integration lands in a later `schemaVersion` rather than
+mutating this one. A consumer that implements `0.2.0` can rely on it not moving underneath
+them. See [`docs/roadmap.md`](docs/roadmap.md).
 
 This document specifies the artifacts a publication exposes so that ORAtlas — or any other
 consumer — can discover its explicitly declared scientific claims and bind each one to an
