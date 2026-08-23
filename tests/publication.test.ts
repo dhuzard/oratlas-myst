@@ -277,6 +277,30 @@ describe("--source-commit", () => {
     );
   });
 
+  it("does not make a git-backed publication validate as stale", () => {
+    // The commit is a build-time input that a fresh export cannot rediscover,
+    // so validate feeds the recorded one back in. Without that, every
+    // git-backed publication would report its own artifacts as stale.
+    const root = gitProject();
+    exportProject({ projectRoot: root, sourceCommit: COMMIT });
+    const result = validateProject({ projectRoot: root });
+    expect(result.errors).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
+  it("still catches a genuinely stale artifact on a git-backed publication", () => {
+    const root = makeProject(
+      {
+        "index.md": `# I\n\n${claim("c", "A statement.")}`,
+        "oratlas.yml": "source:\n  type: git\n  repository: https://github.com/lab/review\n",
+      },
+      { toc: false },
+    );
+    exportProject({ projectRoot: root, sourceCommit: COMMIT });
+    writeFileSync(join(root, "extra.md"), `# Extra\n\n${claim("d", "Another.")}`, "utf8");
+    expect(validateProject({ projectRoot: root }).ok).toBe(false);
+  });
+
   it("keeps the export deterministic for a given commit", () => {
     const root = gitProject();
     const first = exportProject({ projectRoot: root, write: false, sourceCommit: COMMIT });

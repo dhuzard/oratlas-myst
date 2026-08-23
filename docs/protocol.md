@@ -188,6 +188,10 @@ Array.from(pageSource).slice(start, end).join("") === record.selector.textQuote.
 re-runs the whole export in memory to confirm the on-disk artifacts are byte-identical to what
 the current source produces.
 
+One value is outside that comparison: a `source.commit` supplied at build time is fed back in
+from the manifest rather than rediscovered, since a fresh export has no way to know it.
+Verifying the commit itself needs the repository, which is level-2 territory.
+
 ---
 
 ## Verification levels: what a consumer can actually check

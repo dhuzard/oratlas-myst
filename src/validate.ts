@@ -514,7 +514,21 @@ export function validateProject(options: ValidateOptions = {}): ValidationResult
   // --- deterministic consistency with a fresh export -----------------------
   if (options.checkConsistency !== false && errors.length === 0) {
     try {
-      const fresh = exportProject({ projectRoot, write: false });
+      // `--source-commit` is a build-time input, not something the project
+      // carries, so a fresh export cannot rediscover it. Feed the recorded
+      // commit back in, or every git-backed publication would report its own
+      // artifacts as stale. The commit itself is not locally verifiable —
+      // checking it needs the repository — so this comparison deliberately
+      // covers everything *except* that value.
+      const recordedCommit =
+        manifest.publication.source?.type === "git"
+          ? manifest.publication.source.commit
+          : undefined;
+      const fresh = exportProject({
+        projectRoot,
+        write: false,
+        ...(recordedCommit ? { sourceCommit: recordedCommit } : {}),
+      });
       for (const file of fresh.files) {
         const onDisk = file.path === MANIFEST_FILE_NAME ? manifestFile.content : claimsFile.content;
         const expectedPath = file.path === MANIFEST_FILE_NAME ? MANIFEST_FILE_NAME : claimsPath;

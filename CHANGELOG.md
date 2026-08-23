@@ -65,6 +65,9 @@ Artifact `schemaVersion`: `0.2.0`. **Breaking** relative to the unreleased `0.1.
   error, so an escaping TOC entry reported "file not found" and a symlinked config was silently
   ignored. The error now propagates.
 - **`rm -rf` in the `clean` script** is now a Node script, so the package builds on Windows.
+- **`validate` reported a git-backed publication's own artifacts as stale.** Its consistency
+  check re-runs the export, which cannot rediscover a build-time `--source-commit`; the
+  recorded commit is now fed back in. Found by running the full sequence from a fresh clone.
 
 ## [0.1.0] — never released
 
