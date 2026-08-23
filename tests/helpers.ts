@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { OratlasMystError } from "../src/errors.js";
@@ -60,6 +60,13 @@ export function cleanupProjects(): void {
   for (const root of created.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
+}
+
+/** Create a symlink inside a throwaway project, for the discovery tests. */
+export function linkInProject(root: string, linkPath: string, targetPath: string): void {
+  const link = join(root, linkPath);
+  mkdirSync(dirname(link), { recursive: true });
+  symlinkSync(targetPath, link);
 }
 
 /** A single well-formed claim declaration, for fixtures that need one. */

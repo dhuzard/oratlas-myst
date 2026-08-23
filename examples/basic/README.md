@@ -21,6 +21,12 @@ npx myst build --html
 node ../../dist/lib/cli/main.js validate
 ```
 
+In CI, name the commit being built so the manifest can carry it:
+
+```bash
+node ../../dist/lib/cli/main.js export --source-commit "$GITHUB_SHA"
+```
+
 `myst build --html` downloads the `book-theme` site template from api.mystmd.org, so it needs
 network access. The offline equivalent — a real MyST site build against a local template — runs
 as part of `pnpm test`, in `tests/myst-integration.test.ts`.
@@ -45,7 +51,10 @@ _build/html/                       ← the deployable site
 **`myst.yml`** — the `plugins` entry pointing at the built plugin, and `static_files`, which is
 what puts the generated artifacts at the site root.
 
-**`oratlas.yml`** — the whole configuration surface: a canonical URL and an output directory.
+**`oratlas.yml`** — the configuration surface: publication id, canonical URL, version label,
+output directory, and a `source:` descriptor saying where the exact source bytes live. That
+last one is what lets a consumer holding only the published site reach source-byte
+verification: the deployed site serves the artifacts and the built pages, not `results.md`.
 
 **`index.md`** — one `empirical` claim, and cross-references to claims on both pages.
 

@@ -1,4 +1,4 @@
-import { readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { CLAIMS_ARTIFACT_PATH, MANIFEST_FILE_NAME, exportProject } from "../src/export.js";
@@ -268,7 +268,7 @@ describe("export", () => {
   it("emits only safe, ORAtlas-compatible relative paths in the manifest", () => {
     const root = makeProject({ "index.md": `# I\n\n${claim("only", "A statement.")}` });
     const { manifest } = exportProject({ projectRoot: root, write: false });
-    for (const path of [manifest.myst.xref, manifest.artifacts.claims.path]) {
+    for (const path of [manifest.adapter.xref, manifest.artifacts.claims.path]) {
       expect(path.startsWith("./")).toBe(false);
       expect(path.startsWith("/")).toBe(false);
       expect(path).not.toContain("..");
@@ -309,16 +309,90 @@ describe("path safety", () => {
     expect(() => exportProject({ projectRoot: root, write: false })).toThrowError(OratlasMystError);
   });
 
-  it("refuses to read through a symlink that points outside the project", () => {
-    // No TOC: discovery walks the directory and meets the symlink.
-    const root = makeProject({ "index.md": "# I\n" }, { toc: false });
+  it("does not follow symbolic links during page discovery", () => {
+    // No TOC, so discovery walks the directory and meets the symlink. The walk
+    // uses lstat and refuses the link outright: following it would let a link
+    // inside the project walk the filesystem outside it, and a link to an
+    // ancestor would make the walk unbounded.
+    const root = makeProject(
+      { "index.md": `# I\n\n${claim("real", "A real claim.")}` },
+      { toc: false },
+    );
     const outside = join(root, "..", `oratlas-outside-${process.pid}.md`);
+    writeFileSync(
+      outside,
+      `# Outside\n\n${claim("smuggled", "Should never be exported.")}`,
+      "utf8",
+    );
+    symlinkSync(outside, join(root, "escape.md"));
+    try {
+      const discovered = discoverPages(loadConfig(root));
+      expect(discovered.pages.map((page) => page.path)).toEqual(["index.md"]);
+      expect(discovered.skipped.map((entry) => entry.path)).toContain("escape.md");
+      expect(discovered.skipped.find((entry) => entry.path === "escape.md")!.reason).toContain(
+        "symbolic links are not followed",
+      );
+
+      const result = exportProject({ projectRoot: root, write: false });
+      expect(result.claims.map((record) => record.id)).toEqual(["real"]);
+    } finally {
+      rmSync(outside, { force: true });
+    }
+  });
+
+  it("does not follow a symlinked directory during page discovery", () => {
+    // A link to an ancestor directory is the cycle case: statSync would
+    // recurse forever, lstatSync sees a link and stops.
+    const root = makeProject(
+      { "index.md": `# I\n\n${claim("real", "A real claim.")}` },
+      { toc: false },
+    );
+    symlinkSync(root, join(root, "loop"));
+    const discovered = discoverPages(loadConfig(root));
+    expect(discovered.pages.map((page) => page.path)).toEqual(["index.md"]);
+  });
+
+  it("still refuses a TOC entry that reaches outside the project through a symlink", () => {
+    // A TOC entry is an explicit author declaration, so a link that stays
+    // inside the project is honoured — but one that escapes is refused by the
+    // realpath check, not merely skipped.
+    const root = makeProject({ "index.md": "# I\n" }, { toc: ["index.md", "escape.md"] });
+    const outside = join(root, "..", `oratlas-toc-outside-${process.pid}.md`);
     writeFileSync(outside, "# Outside\n", "utf8");
     symlinkSync(outside, join(root, "escape.md"));
-    const config = loadConfig(root);
-    // Discovery finds the symlink as a Markdown file, and resolution then
-    // refuses it rather than reading outside the project.
-    expect(() => discoverPages(config)).toThrowError(/outside the project root/);
+    try {
+      expectOratlasError(
+        () => exportProject({ projectRoot: root, write: false }),
+        /outside the project root/,
+      );
+    } finally {
+      rmSync(outside, { force: true });
+    }
+  });
+
+  it("follows a TOC-declared symlink that stays inside the project", () => {
+    const root = makeProject(
+      { "pages/real.md": `# R\n\n${claim("linked", "Declared through a link.")}` },
+      { toc: ["alias.md"] },
+    );
+    symlinkSync(join(root, "pages", "real.md"), join(root, "alias.md"));
+    const result = exportProject({ projectRoot: root, write: false });
+    expect(result.claims.map((record) => record.id)).toEqual(["linked"]);
+  });
+
+  it("refuses to read a config file that is a symlink out of the project", () => {
+    const root = makeProject({ "index.md": "# I\n" });
+    const outside = join(root, "..", `oratlas-config-${process.pid}.yml`);
+    writeFileSync(outside, "canonical_url: https://evil.example/\n", "utf8");
+    symlinkSync(outside, join(root, "oratlas.yml"));
+    try {
+      expectOratlasError(
+        () => exportProject({ projectRoot: root, write: false }),
+        /outside the project root/,
+      );
+    } finally {
+      rmSync(outside, { force: true });
+    }
   });
 
   it("rejects an unsafe output directory in oratlas.yml", () => {

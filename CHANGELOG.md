@@ -12,9 +12,67 @@ artifact format always implies a `schemaVersion` change.
 
 ## [Unreleased]
 
-## [0.1.0] — unreleased
+## [0.2.0] — unreleased
 
-First release. Artifact `schemaVersion`: `0.1.0`.
+Artifact `schemaVersion`: `0.2.0`. **Breaking** relative to the unreleased `0.1.0`; see below.
+
+### Added
+
+- **Publication identity.** `publication.id` — a source-local identifier stable across versions
+  of one publication, defaulting to `myst.yml`'s `project.id`. Never derived from a URL, never
+  minted by the adapter.
+- **Exact publication-version identity.** `publication.version.sourcesSha256`, a digest over the
+  document set, always present — so a publication with no repository, DOI or archive still has
+  an exact version identity. Optional `version.label` for an author-declared label.
+- **`publication.source`**, a discriminated union over `git`, `doi` and `archive`, saying where
+  the exact source bytes can be obtained. Version and concept DOIs stay distinct fields.
+- **Two documented verification levels.** Published-structure verification (every consumer,
+  from the deployed site alone) and source-byte verification (needs `publication.source`). A
+  deployed MyST site does not serve its Markdown, so the digests over source bytes are not
+  checkable from the site alone — this is now stated rather than assumed.
+  `tests/published-structure.test.ts` proves the level-1 path against a real MyST build using
+  only published bytes.
+- **`oratlas-myst export --source-commit <sha>`**, for CI to name the commit being built. The
+  commit is never detected from the working tree: a detected commit disagrees with the
+  published bytes whenever the tree is dirty.
+- **`resolvePublishedUrl()`**, exported, plus a normative rule in SPEC §6.1. `myst.xref.json`
+  URLs are site-root-relative, so resolving one directly against a canonical URL with a path
+  silently drops the path and breaks every subpath deploy.
+- `validate` now checks `publication.version.sourcesSha256` against the current document set,
+  which catches a page added or removed since the last export.
+- New `oratlas.yml` keys: `id`, `version_label`, `source`.
+
+### Changed
+
+- **`myst: { xref }` is now `adapter: { type: "myst", xref }`**, and claim `target` is now
+  `{ type: "myst-xref", identifier, htmlId }`. Both are discriminated unions so ORAtlas's
+  ingestion contract never hard-codes a MyST concept and a JATS or Quarto adapter can be added
+  without reshaping it. `identifier` is the field every target variant carries.
+- `schemaVersion` `0.1.0` → `0.2.0` for both the manifest and the claim record.
+
+### Fixed
+
+- **Page discovery followed symbolic links.** The directory walk documented "lstat semantics"
+  but called `statSync`, which follows links. A symlinked directory could therefore walk
+  outside the project, or — pointing at an ancestor — make the walk unbounded, before
+  `resolveInsideProject` refused the eventual read. Discovery now uses `lstatSync` and refuses
+  links outright, reporting them to the author; a link declared in `project.toc` is still
+  followed when its real path stays inside the project. A depth cap backs this up.
+- **Configuration files bypassed the safe-path discipline.** `myst.yml` and `oratlas.yml` were
+  read by direct path join, so a symlinked config pointing outside the project would have been
+  read. They now go through the same resolution as every other publication file.
+- **A refused path was reported as "absent".** `projectFileExists` swallowed the unsafe-path
+  error, so an escaping TOC entry reported "file not found" and a symlinked config was silently
+  ignored. The error now propagates.
+- **`rm -rf` in the `clean` script** is now a Node script, so the package builds on Windows.
+- **`validate` reported a git-backed publication's own artifacts as stale.** Its consistency
+  check re-runs the export, which cannot rediscover a build-time `--source-commit`; the
+  recorded commit is now fed back in. Found by running the full sequence from a fresh clone.
+
+## [0.1.0] — never released
+
+Superseded by `0.2.0` before publication. Recorded here for the history of the schema version
+number, which `0.2.0` skips past rather than reuses.
 
 ### Added
 

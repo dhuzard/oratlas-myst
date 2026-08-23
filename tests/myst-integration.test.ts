@@ -204,7 +204,7 @@ describe("real MyST build", () => {
       .map((line) => JSON.parse(line));
     const xref = readXref();
 
-    expect(manifest.myst.xref).toBe("myst.xref.json");
+    expect(manifest.adapter).toEqual({ type: "myst", xref: "myst.xref.json" });
     for (const record of claims) {
       const reference = xref.references.find(
         (candidate) => candidate.identifier === record.target.identifier,

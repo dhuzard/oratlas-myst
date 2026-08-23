@@ -1,15 +1,23 @@
-import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { lstatSync, readdirSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
 import { compareStrings } from "./canonical-json.js";
 import { isOutputPath, MYST_CONFIG_FILE, type LoadedConfig } from "./config.js";
 import { isSafeLocalPath, SAFE_LOCAL_PATH_MESSAGE } from "./contracts/paths.js";
 import { OratlasMystError } from "./errors.js";
+import {
+  MAX_DOCUMENT_BYTES,
+  projectFileExists,
+  readProjectFile,
+  resolveInsideProject,
+} from "./fs-safe.js";
 
-/** MyST source extensions this adapter parses in v0.1. */
+export { MAX_DOCUMENT_BYTES, readProjectFile, resolveInsideProject };
+
+/** MyST source extensions this adapter parses in v0.2. */
 export const SUPPORTED_EXTENSIONS = [".md"] as const;
 
 /**
- * Extensions MyST itself can build but this adapter does not parse in v0.1.
+ * Extensions MyST itself can build but this adapter does not parse.
  * A page in one of these formats is reported, never silently dropped.
  */
 export const UNSUPPORTED_PAGE_EXTENSIONS = [".ipynb", ".tex", ".myst.json"] as const;
@@ -17,10 +25,16 @@ export const UNSUPPORTED_PAGE_EXTENSIONS = [".ipynb", ".tex", ".myst.json"] as c
 /** Directories never walked during discovery. */
 const IGNORED_DIRECTORIES = new Set(["node_modules", "_build", "_static", "_templates"]);
 
-/** Largest source document this adapter will read. */
-export const MAX_DOCUMENT_BYTES = 8_000_000;
 /** Largest number of pages this adapter will process. */
 export const MAX_PAGES = 5_000;
+
+/**
+ * Deepest directory nesting the discovery walk will descend.
+ *
+ * Symbolic links are already refused, which rules out the usual way a walk
+ * becomes unbounded, but a cap is cheap insurance against a pathological tree.
+ */
+export const MAX_WALK_DEPTH = 32;
 
 export interface ProjectPage {
   /** Project-relative POSIX path, e.g. `results.md`. */
@@ -31,7 +45,7 @@ export interface ProjectPage {
 
 export interface DiscoveredPages {
   pages: ProjectPage[];
-  /** Pages declared in the TOC that this version cannot parse. */
+  /** Paths this version deliberately did not process, with the reason. */
   skipped: { path: string; reason: string }[];
   /** How the page list was determined. */
   source: "toc" | "discovery";
@@ -41,90 +55,12 @@ function toPosix(path: string): string {
   return sep === "/" ? path : path.split(sep).join("/");
 }
 
-/**
- * Resolve a project-relative path to an absolute path, refusing anything that
- * escapes the project root.
- *
- * Publication input is untrusted: a TOC entry, a configured artifact path or a
- * static-file entry may be adversarial. Resolution is checked twice — once on
- * the lexical path and once on the real path after symlink resolution — so a
- * symlink inside the project cannot be used to read outside it.
- */
-export function resolveInsideProject(projectRoot: string, relativePath: string): string {
-  if (isAbsolute(relativePath)) {
-    throw new OratlasMystError(
-      "unsafe-path",
-      `Path must be project-relative, not absolute: ${relativePath}`,
-    );
-  }
-  const root = resolve(projectRoot);
-  const resolved = resolve(root, relativePath);
-  const rel = relative(root, resolved);
-  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
-    throw new OratlasMystError(
-      "unsafe-path",
-      `Path escapes the project root: ${relativePath}`,
-      `Resolved to ${resolved}, outside ${root}.`,
-    );
-  }
-  let realRoot: string;
-  try {
-    realRoot = realpathSync(root);
-  } catch {
-    realRoot = root;
-  }
-  let realResolved: string;
-  try {
-    realResolved = realpathSync(resolved);
-  } catch {
-    // The target does not exist yet; the lexical check above already applies.
-    return resolved;
-  }
-  const realRel = relative(realRoot, realResolved);
-  if (realRel !== "" && (realRel.startsWith("..") || isAbsolute(realRel))) {
-    throw new OratlasMystError(
-      "unsafe-path",
-      `Path resolves outside the project root through a symlink: ${relativePath}`,
-      `Resolved to ${realResolved}, outside ${realRoot}.`,
-    );
-  }
-  return resolved;
-}
-
-/** Read a project file with a size cap, rejecting non-regular files. */
-export function readProjectFile(
-  projectRoot: string,
-  relativePath: string,
-  maxBytes: number = MAX_DOCUMENT_BYTES,
-): string {
-  const absolutePath = resolveInsideProject(projectRoot, relativePath);
-  const stats = statSync(absolutePath);
-  if (!stats.isFile()) {
-    throw new OratlasMystError("not-a-file", `Not a regular file: ${relativePath}`);
-  }
-  if (stats.size > maxBytes) {
-    throw new OratlasMystError(
-      "file-too-large",
-      `File is larger than the ${maxBytes} byte cap: ${relativePath}`,
-    );
-  }
-  return readFileSync(absolutePath, "utf8");
-}
-
 function hasSupportedExtension(path: string): boolean {
   return SUPPORTED_EXTENSIONS.some((extension) => path.endsWith(extension));
 }
 
 function unsupportedExtension(path: string): string | undefined {
   return UNSUPPORTED_PAGE_EXTENSIONS.find((extension) => path.endsWith(extension));
-}
-
-function existsAsFile(projectRoot: string, relativePath: string): boolean {
-  try {
-    return statSync(resolveInsideProject(projectRoot, relativePath)).isFile();
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -149,9 +85,33 @@ function collectTocFiles(toc: unknown, out: string[], seen: Set<unknown>): void 
   }
 }
 
-function walkForPages(projectRoot: string, outputDir: string): string[] {
+/**
+ * Walk the project directory for Markdown pages.
+ *
+ * Every entry is examined with `lstatSync`, never `statSync`: a symbolic link
+ * is reported as a link rather than as whatever it points at, and is then
+ * skipped outright. Following one would let a link inside the project walk the
+ * filesystem outside it, and a link to an ancestor directory would make the
+ * walk unbounded. `resolveInsideProject` would still refuse the eventual read,
+ * but the traversal itself must not happen in the first place.
+ *
+ * A symlinked page is not silently dropped: it is reported to the author, who
+ * can declare it in `project.toc` if they meant to include it. A TOC entry is
+ * an explicit declaration and is resolved with the realpath discipline in
+ * `fs-safe.ts`, which permits a link that stays inside the project.
+ */
+function walkForPages(
+  projectRoot: string,
+  outputDir: string,
+): { found: string[]; skipped: { path: string; reason: string }[] } {
   const found: string[] = [];
-  const walk = (directory: string, prefix: string): void => {
+  const skipped: { path: string; reason: string }[] = [];
+
+  const walk = (directory: string, prefix: string, depth: number): void => {
+    if (depth > MAX_WALK_DEPTH) {
+      skipped.push({ path: prefix, reason: `nested deeper than ${MAX_WALK_DEPTH} directories` });
+      return;
+    }
     let names: string[];
     try {
       names = readdirSync(directory).sort(compareStrings);
@@ -164,22 +124,35 @@ function walkForPages(projectRoot: string, outputDir: string): string[] {
       const relativePath = prefix ? `${prefix}/${name}` : name;
       if (isOutputPath(relativePath, outputDir)) continue;
       const absolute = join(directory, name);
+
       let stats;
       try {
-        // lstat semantics: never follow a symlink out of the project.
-        stats = statSync(absolute);
+        stats = lstatSync(absolute);
       } catch {
         continue;
       }
+
+      if (stats.isSymbolicLink()) {
+        if (hasSupportedExtension(name)) {
+          skipped.push({
+            path: relativePath,
+            reason:
+              "symbolic links are not followed during page discovery; declare it in project.toc to include it",
+          });
+        }
+        continue;
+      }
+
       if (stats.isDirectory()) {
-        walk(absolute, relativePath);
+        walk(absolute, relativePath, depth + 1);
       } else if (stats.isFile() && hasSupportedExtension(name)) {
         found.push(relativePath);
       }
     }
   };
-  walk(resolve(projectRoot), "");
-  return found;
+
+  walk(resolve(projectRoot), "", 0);
+  return { found, skipped };
 }
 
 /**
@@ -213,7 +186,7 @@ export function discoverPages(config: LoadedConfig): DiscoveredPages {
       if (unsupported) {
         skipped.push({
           path: normalized,
-          reason: `${unsupported} pages are not parsed by @oratlas/myst v0.1`,
+          reason: `${unsupported} pages are not parsed by @oratlas/myst`,
         });
         continue;
       }
@@ -221,14 +194,14 @@ export function discoverPages(config: LoadedConfig): DiscoveredPages {
       if (!hasSupportedExtension(candidate)) {
         // MyST allows TOC entries without an extension.
         const withExtension = `${candidate}.md`;
-        if (existsAsFile(projectRoot, withExtension)) {
+        if (projectFileExists(projectRoot, withExtension)) {
           candidate = withExtension;
         } else {
           skipped.push({ path: normalized, reason: "not a Markdown page" });
           continue;
         }
       }
-      if (!existsAsFile(projectRoot, candidate)) {
+      if (!projectFileExists(projectRoot, candidate)) {
         throw new OratlasMystError(
           "toc-page-missing",
           `TOC declares a page that does not exist: ${candidate}`,
@@ -238,7 +211,9 @@ export function discoverPages(config: LoadedConfig): DiscoveredPages {
     }
   } else {
     source = "discovery";
-    ordered.push(...walkForPages(projectRoot, oratlas.output));
+    const walked = walkForPages(projectRoot, oratlas.output);
+    ordered.push(...walked.found);
+    skipped.push(...walked.skipped);
   }
 
   const unique: string[] = [];

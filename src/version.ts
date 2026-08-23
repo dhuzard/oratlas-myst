@@ -7,4 +7,4 @@
  * (`tests/version.test.ts`) keeps these in step with `package.json`.
  */
 export const PACKAGE_NAME = "@oratlas/myst";
-export const PACKAGE_VERSION = "0.1.0";
+export const PACKAGE_VERSION = "0.2.0";

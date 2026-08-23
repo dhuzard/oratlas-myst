@@ -60,10 +60,10 @@ describe("published JSON Schemas", () => {
     expect(validateManifest({})).toBe(false);
     expect(
       validateManifest({
-        schemaVersion: "0.2.0",
+        schemaVersion: "0.3.0",
         generator: { name: "x", version: "1" },
-        publication: {},
-        myst: { xref: "myst.xref.json" },
+        publication: { version: { sourcesSha256: "0".repeat(64) } },
+        adapter: { type: "myst", xref: "myst.xref.json" },
         artifacts: {
           claims: {
             path: "oratlas/claims.jsonl",
@@ -77,8 +77,8 @@ describe("published JSON Schemas", () => {
     ).toBe(false);
 
     const validateClaim = compile("oratlas-claim");
-    expect(validateClaim({ schemaVersion: "0.1.0", id: "x" })).toBe(false);
-    expect(validateClaim({ schemaVersion: "0.1.0", id: "Bad Id" })).toBe(false);
+    expect(validateClaim({ schemaVersion: "0.2.0", id: "x" })).toBe(false);
+    expect(validateClaim({ schemaVersion: "0.2.0", id: "Bad Id" })).toBe(false);
   });
 
   it("carry no ORAtlas assessment, TRUST or federation vocabulary", () => {

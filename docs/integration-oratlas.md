@@ -10,33 +10,78 @@ boundary. It is written from a read of `dhuzard/oratlas` as of August 2026.
 
 ---
 
-## 1. The ingestion path
+## 1. Registration, discovery and ingestion
+
+ORAtlas does not host the publication. The publication is somewhere on the web, and ORAtlas
+learns about it because someone registers it:
 
 ```
-external MyST publication
-        │
-        │  GET  https://example.org/review/oratlas.manifest.json
-        ▼
-manifest: schema version, generator, canonical URL, declared artifact paths
-        │
-        │  validate each declared path (SPEC §3), then fetch
-        ▼
-oratlas/claims.jsonl   +   myst.xref.json
-        │
-        │  verify: artifact digest, document digest, block digest,
-        │  declaration digest, selector position, target existence
-        ▼
-exact claim occurrence
-  (publication, exact version, source-local id, source bytes)
-        │
-        │  ORAtlas's own decision, ORAtlas's own rules
-        ▼
-canonical graph binding
-  (stable claim node + exact claim-occurrence version)
+https://lab.org/review/oratlas.manifest.json
+                     │
+                     │  someone registers this URL with ORAtlas
+                     ▼
+           fetch + capture the manifest
+                     │
+                     │  validate declared paths (SPEC §3), then fetch
+                     ▼
+  published-structure verification         ← level 1, always available
+    claims.jsonl + myst.xref.json + page data
+                     │
+                     │  when publication.source is resolvable
+                     ▼
+     source-byte verification              ← level 2
+    documentSha256, blockSha256, selectors
+                     │
+                     ▼
+      canonical publication version
+   (publication.id + version.sourcesSha256)
+                     │
+                     ▼
+           claim occurrences
+                     │
+                     │  ORAtlas's own decision, ORAtlas's own rules
+                     ▼
+        canonical ORAtlas graph binding
 ```
 
-The adapter stops at "exact claim occurrence". Everything below that line is ORAtlas's, and the
-adapter neither performs it nor presumes its outcome.
+**The registration endpoint is the missing operational piece.** Everything above the
+"canonical publication version" line is specified and implemented on the publication side.
+Below it is ORAtlas's. But the arrow at the top — _someone registers this URL_ — has no
+implementation anywhere yet, and without it "ORAtlas does not need to host the publication"
+stays a conceptual claim rather than an operational one. See §5.0.
+
+The adapter stops at "claim occurrences". It neither performs the canonical binding nor
+presumes its outcome.
+
+### 1.1 The two verification levels
+
+This distinction is load-bearing, and it is the reason `publication.source` exists.
+
+A deployed MyST site serves rendered pages, page JSON, `myst.xref.json` and the ORAtlas
+artifacts. It does **not** generally serve `results.md`. So a claim record can say
+`results.md` has digest `abc…` while ORAtlas, holding only the published site, has no way to
+obtain those bytes and check it.
+
+|                                     | Level 1 — published structure | Level 2 — source bytes                      |
+| ----------------------------------- | ----------------------------- | ------------------------------------------- |
+| Needs                               | the published site only       | additionally, `publication.source` resolved |
+| Artifact digest                     | ✓                             | ✓                                           |
+| Declared paths safe                 | ✓                             | ✓                                           |
+| Target resolves in the inventory    | ✓                             | ✓                                           |
+| Claim node present in the page data | ✓                             | ✓                                           |
+| `documentSha256`                    | —                             | ✓                                           |
+| `blockSha256`                       | —                             | ✓                                           |
+| `declarationSha256` recomputed      | —                             | ✓                                           |
+| Source selectors located            | —                             | ✓                                           |
+
+A journal site with no public Markdown is a first-class participant at level 1. A GitHub-backed
+or DOI-deposited publication additionally reaches level 2. ORAtlas MUST record which level it
+reached for a given ingestion, and MUST NOT present a level-1 ingestion as though the source
+bytes had been verified.
+
+`tests/published-structure.test.ts` in this repository runs level 1 against a real MyST build
+using only published bytes, with the Markdown deliberately out of reach, so the level-1 path is
+demonstrated rather than assumed.
 
 ---
 
@@ -91,6 +136,25 @@ key sort, `undefined` members omitted, `-0` normalised, fail-closed on non-finit
 circular references and non-plain objects. A `declarationSha256` recomputed on the ORAtlas side
 matches the one in the artifact.
 
+### Publication and version identity are separate fields
+
+`publication.id` is stable across versions; `publication.version.sourcesSha256` identifies the
+exact version. Neither is an ORAtlas canonical identity, and the adapter never mints one — they
+are evidence for ORAtlas's own keying decision, not a substitute for it.
+
+The version digest always exists, including for a publication with no repository, DOI or
+archive, so ORAtlas can distinguish version 1 from version 2 of a plain website without
+guessing from a mutable URL.
+
+### The adapter and target types are discriminated unions
+
+`adapter.type` and `target.type` name the authoring toolchain. ORAtlas should switch on them
+and normalise into one generic source-occurrence representation, so a JATS or Quarto adapter
+later needs no change to the canonical graph. `target.identifier` is the field every variant
+carries; everything else is variant-specific.
+
+Do not build the ingestion contract around `myst.xref` or a bare `{identifier, htmlId}`.
+
 ### `@oratlas/contracts` is not a dependency, on purpose
 
 ORAtlas's contracts package is its internal boundary, not the portable protocol boundary.
@@ -144,6 +208,35 @@ never reinterprets, rewrites, upgrades or re-emits them. See
 ## 5. What ORAtlas needs to add
 
 This repository implements none of the following. It is listed so the work is legible.
+
+### 5.0 A registration endpoint for externally hosted manifests
+
+**This is what makes the architecture operational rather than conceptual**, and it is the piece
+with no implementation on either side today.
+
+ORAtlas needs a way to be told _this URL is an ORAtlas-compatible publication_, and to keep
+that registration alive across the publication's versions. Roughly:
+
+1. **Register** — accept a manifest URL. Fetch it with a bounded, timeout-capped, redirect-
+   limited client. Re-validate every declared path against SPEC §3 before fetching anything it
+   points at. Never follow a path the manifest declares without re-checking it.
+2. **Capture** — store the fetched bytes and their digests, so an ingestion is reproducible and
+   auditable after the site changes. The manifest is a snapshot of a moment.
+3. **Verify** — level 1 always; level 2 when `publication.source` resolves. Record which.
+4. **Key** — bind to a canonical publication using `publication.id`, `canonicalUrl` and
+   `source` as evidence. `version.sourcesSha256` distinguishes versions.
+5. **Re-check** — a publication is republished, not pushed. Registration implies polling or an
+   author-triggered re-ingest; a changed `sourcesSha256` is a new version, not an edit.
+
+Things this endpoint must get right, because they are adversarial inputs: the manifest is
+fetched from a host ORAtlas does not control, so its size, its redirect chain, its declared
+paths and its declared record counts are all untrusted. Cap them all. A registration must not
+be able to make ORAtlas fetch an arbitrary internal URL.
+
+Ownership is a separate question this specification does not answer: proving that whoever
+registers `https://lab.org/review/` is entitled to. A `.well-known` challenge, a DNS record or
+a repository-based proof are all plausible; none is specified here, and ORAtlas should decide
+it before registration is open rather than after.
 
 ### 5.1 The `oratlas:claim` directive in ORAtlas's MyST reader
 
@@ -209,6 +302,14 @@ None of these are needed for ingestion, and none should be inferred from the art
 For an implementer on the ORAtlas side:
 
 - [ ] Reject a `schemaVersion` you do not implement. Do not partially read it.
+- [ ] Switch on `adapter.type` and `target.type`; reject a variant you do not implement. Do not
+      assume `myst`.
+- [ ] Record which verification level you reached (§1.1). Never present a level-1 ingestion as
+      source-verified.
+- [ ] Resolve an inventory URL by treating `canonicalUrl` as the site root: strip the leading
+      `/` first, or a subpath deploy silently loses its prefix (SPEC §6.1).
+- [ ] Key the publication from `publication.id`, `canonicalUrl` and `source` as evidence;
+      distinguish versions by `version.sourcesSha256`. Never treat a URL as identity.
 - [ ] Re-validate every declared path against SPEC §3 before fetching. Do not trust the
       producer.
 - [ ] Verify `artifacts.claims.sha256` against the fetched bytes.

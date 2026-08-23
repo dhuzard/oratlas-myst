@@ -1,17 +1,20 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createHtmlId } from "myst-common";
-import { compareStrings } from "./canonical-json.js";
+import { canonicalJson, compareStrings } from "./canonical-json.js";
 import { loadConfig, type LoadedConfig } from "./config.js";
 import {
   CLAIM_RECORD_SCHEMA_VERSION,
   MANIFEST_SCHEMA_VERSION,
   SELECTOR_REPRESENTATION,
+  gitSourceSchema,
   claimRecordSchema,
   oratlasManifestSchema,
   type ClaimDeclarationAuthority,
   type ClaimRecord,
   type OratlasManifest,
+  type PublicationSource,
+  type PublicationVersion,
 } from "./contracts/index.js";
 import { OratlasMystError } from "./errors.js";
 import { claimDeclarationSha256, sha256 } from "./hash.js";
@@ -30,6 +33,17 @@ export interface ExportOptions {
   projectRoot?: string;
   /** Write the artifacts to disk. When false, everything is computed in memory. */
   write?: boolean;
+  /**
+   * Git object id of the commit being built, for a `source: { type: git }`
+   * publication.
+   *
+   * A commit is usually only knowable at build time — the config file is
+   * itself part of the commit — so CI supplies it here rather than the author
+   * hard-coding it. The commit is never read from the working tree: a detected
+   * commit would silently disagree with the bytes whenever the tree is dirty,
+   * which is exactly the case where provenance matters most.
+   */
+  sourceCommit?: string;
 }
 
 export interface ExportResult {
@@ -90,7 +104,7 @@ function buildClaimRecord(
     ...(delegated ? {} : { text: occurrence.text }),
     ...(delegated || !options.claimType ? {} : { claimType: options.claimType }),
     ...(delegated || !options.qualification ? {} : { qualification: options.qualification }),
-    target: { identifier: options.id, htmlId },
+    target: { type: "myst-xref", identifier: options.id, htmlId },
     source: {
       documentPath,
       documentSha256,
@@ -131,6 +145,65 @@ function buildClaimRecord(
 }
 
 /**
+ * SHA-256 over the publication's document set.
+ *
+ * This is the publication-level digest: an exact version identity that exists
+ * for every publication, including one served from a plain website with no
+ * repository, no DOI and no source archive. It covers the set of processed
+ * documents as `{ path, sha256 }` sorted by path, so it changes when any page
+ * changes, is added, or is removed.
+ *
+ * It deliberately does not cover `myst.yml` or `oratlas.yml`. Those configure
+ * the build; the claims bind to the document bytes, and that is what this
+ * digest identifies.
+ */
+export function publicationSourcesSha256(documents: { path: string; sha256: string }[]): string {
+  const sorted = [...documents].sort((left, right) => compareStrings(left.path, right.path));
+  return sha256(
+    canonicalJson({
+      schemaVersion: MANIFEST_SCHEMA_VERSION,
+      documents: sorted.map(({ path, sha256: digest }) => ({ path, sha256: digest })),
+    }),
+  );
+}
+
+/**
+ * Merge a CI-supplied commit into the configured source descriptor.
+ *
+ * Only a `git` source can take a commit; supplying one for a DOI or archive
+ * source is a configuration mistake rather than something to ignore.
+ */
+function resolveSource(
+  configured: PublicationSource | undefined,
+  sourceCommit: string | undefined,
+): PublicationSource | undefined {
+  if (!sourceCommit) return configured;
+  if (!configured) {
+    throw new OratlasMystError(
+      "source-commit-without-source",
+      "A source commit was supplied, but oratlas.yml declares no `source:` block.",
+      "Add `source: { type: git, repository: https://... }` to oratlas.yml.",
+    );
+  }
+  if (configured.type !== "git") {
+    throw new OratlasMystError(
+      "source-commit-not-git",
+      `A source commit was supplied, but the declared source is of type "${configured.type}".`,
+      "A commit only applies to `source: { type: git }`.",
+    );
+  }
+  const merged = gitSourceSchema.safeParse({ ...configured, commit: sourceCommit });
+  if (!merged.success) {
+    throw new OratlasMystError(
+      "source-commit-invalid",
+      `Supplied source commit is not a full lowercase git object id: ${sourceCommit}`,
+      "Expected 40 or 64 lowercase hexadecimal characters.",
+    );
+  }
+  return merged.data;
+}
+
+/**
  * Export a MyST publication's ORAtlas interoperability artifacts.
  *
  * The export is offline and deterministic: identical source bytes and
@@ -162,12 +235,14 @@ export function exportProject(options: ExportOptions = {}): ExportResult {
   }
 
   const records: ClaimRecord[] = [];
+  const documents: { path: string; sha256: string }[] = [];
   const firstSeen = new Map<string, string>();
   const problems: string[] = [];
 
   for (const page of discovered.pages) {
     const source = readProjectFile(projectRoot, page.path);
     const documentSha256 = sha256(source);
+    documents.push({ path: page.path, sha256: documentSha256 });
     const parsed = parseDocument(source, page.path);
     if (parsed.problems.length > 0) {
       problems.push(formatProblems(page.path, parsed.problems));
@@ -229,15 +304,34 @@ export function exportProject(options: ExportOptions = {}): ExportResult {
 
   const claimsContent = serializeJsonl(records);
   const title = config.oratlas.title ?? config.myst.title;
+  // `myst.yml`'s `project.id` is the natural source-local publication
+  // identifier; `oratlas.yml` can override it. Neither is an ORAtlas canonical
+  // identifier, and the adapter never mints one.
+  const publicationId = config.oratlas.id ?? config.myst.id;
+  const source = resolveSource(config.oratlas.source, options.sourceCommit);
+
+  const version: PublicationVersion = {
+    sourcesSha256: publicationSourcesSha256(documents),
+    ...(config.oratlas.versionLabel ? { label: config.oratlas.versionLabel } : {}),
+  };
+
+  if (!source) {
+    notes.push(
+      "No `source:` declared in oratlas.yml, so a consumer that only has the published site cannot verify the source-byte digests. See docs/protocol.md on verification levels.",
+    );
+  }
 
   const manifest: OratlasManifest = {
     schemaVersion: MANIFEST_SCHEMA_VERSION,
     generator: { name: PACKAGE_NAME, version: PACKAGE_VERSION },
     publication: {
+      ...(publicationId ? { id: publicationId } : {}),
       ...(config.oratlas.canonicalUrl ? { canonicalUrl: config.oratlas.canonicalUrl } : {}),
       ...(title ? { title } : {}),
+      version,
+      ...(source ? { source } : {}),
     },
-    myst: { xref: "myst.xref.json" },
+    adapter: { type: "myst", xref: "myst.xref.json" },
     artifacts: {
       claims: {
         path: CLAIMS_ARTIFACT_PATH,

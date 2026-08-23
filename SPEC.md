@@ -1,11 +1,17 @@
-# ORAtlas ↔ MyST interoperability specification, version 0.1
+# ORAtlas publication interoperability specification, version 0.2
 
-Status: **draft**. Schema version `0.1.0`. Breaking changes are expected before 1.0;
+Status: **draft**. Schema version `0.2.0`. Breaking changes are expected before 1.0;
 see [`docs/roadmap.md`](docs/roadmap.md).
 
-This document specifies the artifacts a MyST publication exposes so that ORAtlas — or any
-other consumer — can discover its explicitly declared scientific claims and bind each one to
-an exact source occurrence.
+This document specifies the artifacts a publication exposes so that ORAtlas — or any other
+consumer — can discover its explicitly declared scientific claims and bind each one to an
+exact source occurrence.
+
+The format is authoring-toolchain-neutral by construction: `adapter.type` and `target.type`
+name the toolchain, and a consumer normalises every variant into one generic source-occurrence
+representation. This version defines the `myst` adapter and the `myst-xref` target, which
+`@oratlas/myst` produces. A JATS or Quarto adapter would add variants without ORAtlas's
+ingestion contract changing shape.
 
 The key words MUST, MUST NOT, REQUIRED, SHOULD, SHOULD NOT and MAY are to be interpreted as
 described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
@@ -17,7 +23,11 @@ described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
 **Publication** — one built MyST project, served from one canonical base URL.
 
 **Publication version** — the exact byte content of a publication's source at one point in
-time. This specification describes one such version and never relates two of them.
+time, identified by `publication.version.sourcesSha256`. This specification describes one such
+version and never relates two of them.
+
+**Source-local publication identifier** — an identifier declared by the author that is stable
+across versions of the same publication. Like a claim id it is _not_ an ORAtlas identifier.
 
 **Source-local claim id** — an identifier chosen by the author, unique within one
 publication, that names a claim declaration in that publication's source. It is _not_ an
@@ -35,17 +45,22 @@ qualification. A publication has exactly one authority for its claim declaration
 
 **Consumer** — anything that reads the artifacts: ORAtlas, a validator, a crawler.
 
+**Adapter** — the toolchain-specific producer of these artifacts, named by `adapter.type`.
+
 ---
 
 ## 2. Artifacts
 
 A conforming publication exposes, relative to its canonical base URL:
 
-| Path                    | Owner     | Content                                 |
-| ----------------------- | --------- | --------------------------------------- |
-| `myst.xref.json`        | MyST      | MyST's cross-reference inventory        |
-| `oratlas.manifest.json` | this spec | Discovery and interoperability manifest |
-| `oratlas/claims.jsonl`  | this spec | One claim occurrence record per line    |
+| Path                    | Owner     | Content                                       |
+| ----------------------- | --------- | --------------------------------------------- |
+| `myst.xref.json`        | toolchain | The toolchain's own cross-reference inventory |
+| `oratlas.manifest.json` | this spec | Discovery and interoperability manifest       |
+| `oratlas/claims.jsonl`  | this spec | One claim occurrence record per line          |
+
+The first row's path is whatever `adapter` declares; for the `myst` adapter it is
+`myst.xref.json`, written by MyST itself.
 
 `oratlas.manifest.json` MUST be served at the publication's root. `myst.xref.json` is written
 by MyST itself; this specification neither defines nor reproduces it.
@@ -139,13 +154,20 @@ JSON Schema: [`schemas/oratlas-manifest.schema.json`](schemas/oratlas-manifest.s
 
 ```json
 {
-  "schemaVersion": "0.1.0",
-  "generator": { "name": "@oratlas/myst", "version": "0.1.0" },
+  "schemaVersion": "0.2.0",
+  "generator": { "name": "@oratlas/myst", "version": "0.2.0" },
   "publication": {
+    "id": "adolescent-stress-review",
     "canonicalUrl": "https://example.org/adolescent-stress/",
-    "title": "Adolescent stress and persistent behavioural change"
+    "title": "Adolescent stress and persistent behavioural change",
+    "version": { "sourcesSha256": "d9cc…", "label": "v1.0.0" },
+    "source": {
+      "type": "git",
+      "repository": "https://github.com/lab/review",
+      "commit": "0123456789abcdef0123456789abcdef01234567"
+    }
   },
-  "myst": { "xref": "myst.xref.json" },
+  "adapter": { "type": "myst", "xref": "myst.xref.json" },
   "artifacts": {
     "claims": {
       "path": "oratlas/claims.jsonl",
@@ -161,25 +183,127 @@ JSON Schema: [`schemas/oratlas-manifest.schema.json`](schemas/oratlas-manifest.s
 The object is **closed**: a consumer MUST reject a manifest carrying a key not defined here.
 Extension is by a new `schemaVersion`, not by additional keys (§10).
 
-| Field                           | Req. | Meaning                                                               |
-| ------------------------------- | ---- | --------------------------------------------------------------------- |
-| `schemaVersion`                 | MUST | Exactly `"0.1.0"` for this specification.                             |
-| `generator.name`                | MUST | Identity of the producing software.                                   |
-| `generator.version`             | MUST | Its version.                                                          |
-| `publication.canonicalUrl`      | MAY  | Absolute `https://` URL the publication is served from.               |
-| `publication.title`             | MAY  | Human-readable title.                                                 |
-| `myst.xref`                     | MUST | Path of MyST's cross-reference inventory. See §6.                     |
-| `artifacts.claims.path`         | MUST | Path of the claims artifact.                                          |
-| `artifacts.claims.format`       | MUST | Exactly `"jsonl"`.                                                    |
-| `artifacts.claims.records`      | MUST | Number of records in the artifact.                                    |
-| `artifacts.claims.sha256`       | MUST | SHA-256 over the artifact's complete UTF-8 bytes, lowercase hex.      |
-| `artifacts.claims.declarations` | MUST | `"publication-source"` or `"review-manifest"`. See §7.                |
-| `oratlas.reviewManifest`        | MAY  | Path of an ORAtlas `review-manifest.json` shipped by the publication. |
+| Field                               | Req. | Meaning                                                             |
+| ----------------------------------- | ---- | ------------------------------------------------------------------- |
+| `schemaVersion`                     | MUST | Exactly `"0.2.0"` for this specification.                           |
+| `generator.name` / `.version`       | MUST | Identity and version of the producing software.                     |
+| `publication.id`                    | MAY  | Source-local publication identifier, stable across versions (§5.1). |
+| `publication.canonicalUrl`          | MAY  | Absolute `https://` URL the publication is served from.             |
+| `publication.title`                 | MAY  | Human-readable title.                                               |
+| `publication.version.sourcesSha256` | MUST | Exact version identity for this publication (§5.2).                 |
+| `publication.version.label`         | MAY  | Author-declared version label.                                      |
+| `publication.source`                | MAY  | Where the exact source bytes can be obtained (§5.3).                |
+| `adapter.type`                      | MUST | Authoring toolchain; `"myst"` in this version (§5.4).               |
+| `adapter.xref`                      | MUST | For `myst`: path of MyST's cross-reference inventory. See §6.       |
+| `artifacts.claims.path`             | MUST | Path of the claims artifact.                                        |
+| `artifacts.claims.format`           | MUST | Exactly `"jsonl"`.                                                  |
+| `artifacts.claims.records`          | MUST | Number of records in the artifact.                                  |
+| `artifacts.claims.sha256`           | MUST | SHA-256 over the artifact's complete UTF-8 bytes, lowercase hex.    |
+| `artifacts.claims.declarations`     | MUST | `"publication-source"` or `"review-manifest"`. See §7.              |
+| `oratlas.reviewManifest`            | MAY  | Path of an ORAtlas `review-manifest.json` the publication ships.    |
 
 `canonicalUrl` MUST use the `https` scheme. A consumer MUST NOT dereference it as part of
 validation.
 
-### 5.1 What the manifest MUST NOT contain
+### 5.1 Publication identity
+
+`publication.id` names the publication across its versions. It is declared by the author — a
+generator MUST NOT derive one from the canonical URL, and MUST NOT mint an ORAtlas identifier.
+
+A URL is not identity. A publication can move, be mirrored, or be served from several hosts,
+and two publications can occupy the same URL at different times. `publication.id` says _which
+publication this is_; `publication.version.sourcesSha256` says _which version of it_.
+
+Neither is an ORAtlas canonical publication identity. ORAtlas keys a publication by its own
+rules, using the source descriptor, the canonical URL and the declared identifier as evidence,
+never as a decision.
+
+### 5.2 Publication version identity
+
+`publication.version.sourcesSha256` is:
+
+```
+SHA-256( canonicalJson({
+  "schemaVersion": "0.2.0",
+  "documents": [ { "path": …, "sha256": … }, … ]   // every processed document, sorted by path
+}) )
+```
+
+where each `sha256` is the document digest defined in §8.3 and the array is sorted by `path`
+using UTF-16 code-unit comparison.
+
+It always exists. A publication served from a plain website with no repository, no DOI and no
+archive still has an exact, recomputable version identity, which is what lets ORAtlas tell
+version 1 from version 2 of the same publication without guessing.
+
+It covers the **document set** only. It deliberately does not cover `myst.yml`, `oratlas.yml`
+or any other configuration: those configure the build, whereas the claims bind to document
+bytes, and that is what this digest identifies.
+
+### 5.3 Source descriptor and the two verification levels
+
+A deployed site serves its rendered pages, its cross-reference inventory and these artifacts.
+It does **not** generally serve `results.md`. So a consumer holding only the published site
+cannot check `documentSha256`, `blockSha256` or the raw-source selectors — the bytes those
+cover are not published.
+
+This specification therefore defines two levels, and a consumer MUST be explicit about which
+one it reached:
+
+**Level 1 — published-structure verification.** Available to every consumer, needing only the
+published site:
+
+- `artifacts.claims.sha256` matches the fetched artifact bytes;
+- `artifacts.claims.records` matches the record count;
+- every declared path satisfies §3;
+- every `target.identifier` resolves in the toolchain's cross-reference inventory;
+- the page data that inventory points at really contains a claim node with that identifier.
+
+This proves the claim exists in the published structure, at a resolvable location. It proves
+nothing about source bytes.
+
+**Level 2 — source-byte verification.** Additionally available to a consumer that can obtain
+the publication's source, which `publication.source` tells it how to do:
+
+- `source.documentSha256` matches the document's bytes;
+- `source.blockSha256` matches the recorded line span;
+- `selector.textPosition` locates `selector.textQuote.exact` in the source;
+- `declarationSha256` recomputes from the declaration.
+
+`publication.source` is a discriminated union on `type`. This version defines:
+
+| `type`    | Fields                                  | Meaning                           |
+| --------- | --------------------------------------- | --------------------------------- |
+| `git`     | `repository` (https), `commit`?, `ref`? | Source lives in a git repository. |
+| `doi`     | `versionDoi`, `conceptDoi`?             | Source is deposited under a DOI.  |
+| `archive` | `url` (https), `sha256`, `format`?      | Source is an immutable bundle.    |
+
+`versionDoi` and `conceptDoi` are distinct fields and MUST NOT be collapsed, matching ORAtlas's
+own rule. DOIs MUST be bare (`10.xxxx/suffix`) with no `doi:` or resolver prefix.
+
+`commit` is optional because a commit is usually only knowable at build time — the
+configuration file is itself part of the commit. A generator SHOULD accept it from its
+invocation (`oratlas-myst export --source-commit <sha>`) rather than detecting it from a
+working tree: a detected commit silently disagrees with the published bytes whenever the tree
+is dirty, which is precisely when provenance matters most.
+
+A publication that declares no `source` is still a first-class participant; it is simply
+limited to level 1. A generator SHOULD say so rather than leaving the author to discover it.
+
+### 5.4 Adapter
+
+`adapter` is a discriminated union on `type` naming the authoring toolchain. This version
+defines `"myst"`, whose `xref` field points at MyST's own cross-reference inventory.
+
+The union exists so ORAtlas's ingestion contract never hard-codes a MyST concept. A consumer
+switches on `adapter.type`, normalises the result into one generic source-occurrence
+representation, and the canonical graph never learns which toolchain a publication was
+authored in.
+
+A consumer MUST reject an `adapter.type` it does not implement rather than guessing at the
+fields.
+
+### 5.5 What the manifest MUST NOT contain
 
 The manifest is a discovery document for immutable publication-side assertions. It MUST NOT
 carry:
@@ -201,7 +325,7 @@ model assesses a specific _claim–evidence relation_, not a claim (`docs/trust-
 upstream); a single number attached to a claim would be a different, incompatible, and wrong
 thing.
 
-### 5.2 `$schema`
+### 5.6 `$schema`
 
 This version deliberately omits a `$schema` member. A `$schema` URL is only useful if it is
 permanently resolvable, and this specification does not yet have a hosting commitment to make
@@ -210,24 +334,49 @@ version MAY add `$schema` once a stable URL exists.
 
 ---
 
-## 6. Relationship to `myst.xref.json`
+## 6. Relationship to the toolchain's cross-reference inventory
 
 MyST already publishes a cross-reference inventory that maps each target identifier to the URL
 and data file that serve it. This specification does not reproduce, mirror, or rewrite it.
 
 ```
-myst.xref.json         local target identifier  →  publication URL and page data
-oratlas/claims.jsonl   local target identifier  →  scientific claim declaration + source binding
+myst.xref.json         target identifier  →  publication URL and page data
+oratlas/claims.jsonl   target identifier  →  scientific claim declaration + source binding
 ```
 
-A generator MUST make every declared claim a MyST cross-reference target whose identifier
-equals the source-local claim id, so the two artifacts join on that identifier. A generator
-MUST NOT copy URLs, slugs or page data into the claims artifact: those belong to the build,
-change when the site is reorganised, and are already published by MyST.
+A generator MUST make every declared claim a cross-reference target whose identifier equals the
+source-local claim id, so the two artifacts join on that identifier. A generator MUST NOT copy
+URLs, slugs or page data into the claims artifact: those belong to the build, change when the
+site is reorganised, and are already published by the toolchain.
 
 A consumer resolves a claim to its live location by joining `claims.jsonl[].target.identifier`
-with `myst.xref.json.references[].identifier` and reading that entry's `url`, resolved against
-`publication.canonicalUrl`.
+with `myst.xref.json.references[].identifier`, then resolving that entry's `url` against
+`publication.canonicalUrl` under the rule below.
+
+### 6.1 Resolving an inventory URL
+
+`myst.xref.json` `url` values are **site-root-relative absolute paths** (`/`, `/results`), not
+paths relative to the publication. Resolving one directly against a canonical URL that has a
+path component silently discards that path:
+
+```js
+new URL("/results", "https://example.org/review/").href;
+// → "https://example.org/results"      ← wrong: the /review/ prefix is gone
+```
+
+Every publication deployed under a subpath — a project site, a journal hosting many articles —
+hits this. A consumer MUST therefore treat `publication.canonicalUrl` as the site root for that
+publication: append a trailing `/` if absent, strip leading `/` characters from the inventory
+URL, and resolve the remainder relative to it.
+
+```js
+const base = canonicalUrl.endsWith("/") ? canonicalUrl : `${canonicalUrl}/`;
+const url = new URL(xrefUrl.replace(/^\/+/, ""), base);
+// → "https://example.org/review/results"
+```
+
+`target.htmlId` is the fragment identifier within that page. A generator SHOULD declare a
+`canonicalUrl` ending in `/`.
 
 ---
 
@@ -265,12 +414,16 @@ JSON Schema: [`schemas/oratlas-claim.schema.json`](schemas/oratlas-claim.schema.
 
 ```json
 {
-  "schemaVersion": "0.1.0",
+  "schemaVersion": "0.2.0",
   "id": "hpa-axis-mediation",
   "text": "Persistent behavioural change after adolescent stress is mediated in part by lasting alterations in hypothalamic–pituitary–adrenal axis reactivity [@mccormick2010].\n\nThe mediation is partial: HPA reactivity accounts for some, but not all, of the variance in later behaviour.",
   "claimType": "mechanistic",
   "qualification": "Rodent models only; evidence in humans is correlational.",
-  "target": { "identifier": "hpa-axis-mediation", "htmlId": "hpa-axis-mediation" },
+  "target": {
+    "type": "myst-xref",
+    "identifier": "hpa-axis-mediation",
+    "htmlId": "hpa-axis-mediation"
+  },
   "source": {
     "documentPath": "results.md",
     "documentSha256": "5b1f…",
@@ -365,7 +518,7 @@ its fencing change, and not when the rest of the page changes.
 
 ```
 SHA-256( canonicalJson({
-  "schemaVersion": "0.1.0",
+  "schemaVersion": "0.2.0",
   "id":            <source-local claim id>,
   "body":          <the directive body exactly as MyST read it from the source>,
   "claimType":     <if declared>,
@@ -435,6 +588,20 @@ it would make the artifact depend on the host environment.
 
 ---
 
+### 8.6 Target
+
+`target` is a discriminated union on `type`, for the same reason `adapter` is (§5.4): a
+consumer normalises every variant into one generic source-occurrence representation.
+
+This version defines `"myst-xref"`, carrying `identifier` and `htmlId`. Every future variant
+MUST carry `identifier`, which is the field that joins a claim record to the toolchain's
+cross-reference inventory; anything else is variant-specific. A consumer MUST reject a
+`target.type` it does not implement.
+
+`target.identifier` MUST equal the record `id`.
+
+---
+
 ## 9. Determinism
 
 Given identical source bytes and identical configuration, a generator MUST produce
@@ -457,6 +624,8 @@ sorted directory walk.
 
 `schemaVersion` is `MAJOR.MINOR.PATCH`. Before 1.0, any release MAY break compatibility.
 
+Version `0.1.0` was never released. `0.2.0` is the first published schema version.
+
 A consumer MUST reject a manifest whose `schemaVersion` it does not implement, rather than
 attempting a partial read. Both the manifest object and the claim record object are closed:
 an unknown key is an error, not something to ignore.
@@ -475,6 +644,14 @@ Publication input is untrusted. Both a generator and a consumer:
 
 - MUST validate every path against §3 before opening or fetching it, and MUST refuse to
   resolve outside the publication root, including through a symbolic link;
+- MUST NOT follow a symbolic link while _discovering_ files. Discovery walks untrusted
+  directory structure, where a link can reach outside the publication or, if it points at an
+  ancestor, make the walk unbounded. A generator MUST examine each entry with an lstat-style
+  call that reports the link itself, and MUST refuse the link rather than what it points at. A
+  link named by an _explicit_ declaration (a table-of-contents entry, a configured path) MAY be
+  followed, provided the resolved real path is still inside the publication;
+- MUST apply the same discipline to their own configuration files, which are publication input
+  like any other;
 - MUST NOT execute anything from the publication, and MUST NOT evaluate claim content as
   code;
 - MUST NOT dereference a remote URL as part of generating or validating these artifacts;

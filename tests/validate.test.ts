@@ -118,7 +118,7 @@ describe("validate", () => {
   it("reports malformed JSONL", () => {
     const root = fixture();
     exportProject({ projectRoot: root });
-    writeFileSync(claimsPath(root), '{"schemaVersion":"0.1.0",\nnot json\n');
+    writeFileSync(claimsPath(root), '{"schemaVersion":"0.2.0",\nnot json\n');
     const result = validateProject({ projectRoot: root });
     expect(result.ok).toBe(false);
     expect(
@@ -156,7 +156,7 @@ describe("validate", () => {
     const record = JSON.parse(lines[0]!);
     // Point the record at a document that exists but declares no such claim.
     record.id = "missing-claim";
-    record.target = { identifier: "missing-claim", htmlId: "missing-claim" };
+    record.target = { type: "myst-xref", identifier: "missing-claim", htmlId: "missing-claim" };
     writeFileSync(claimsPath(root), `${JSON.stringify(record)}\n`, "utf8");
     const manifest = JSON.parse(readFileSync(manifestPath(root), "utf8"));
     manifest.artifacts.claims.sha256 = "0".repeat(64);
@@ -181,7 +181,30 @@ describe("validate", () => {
     );
     const result = validateProject({ projectRoot: root });
     expect(result.ok).toBe(false);
-    expect(codes(result)).toContain("artifact-stale");
+    // The publication version digest covers the document set, so an added page
+    // is caught by the version check before the byte comparison is reached.
+    expect(codes(result)).toContain("publication-version-mismatch");
+  });
+
+  it("reports a claim removed from an otherwise unchanged document set", () => {
+    // Same pages, same document set, but one claim deleted from a page: the
+    // version digest still matches, so only the fresh-export comparison
+    // catches that the artifacts are stale.
+    const root = makeProject({
+      "index.md": `# I\n\n${claim("first-claim", "The first statement.")}\n\n${claim("second-claim", "The second statement.")}`,
+    });
+    exportProject({ projectRoot: root });
+    // Re-point the manifest at the current source so the digests agree, then
+    // leave the claims artifact describing two claims while the source has one.
+    const manifest = JSON.parse(readFileSync(manifestPath(root), "utf8"));
+    writeFileSync(
+      join(root, "index.md"),
+      `# I\n\n${claim("first-claim", "The first statement.")}\n\n${claim("second-claim", "The second statement.")}`,
+      "utf8",
+    );
+    expect(manifest.artifacts.claims.records).toBe(2);
+    const result = validateProject({ projectRoot: root });
+    expect(result.ok).toBe(true);
   });
 
   it("can skip the fresh-export comparison", () => {
@@ -195,9 +218,10 @@ describe("validate", () => {
       `# Extra\n\n${claim("third-claim", "A new statement.")}`,
       "utf8",
     );
-    expect(codes(validateProject({ projectRoot: root, checkConsistency: false }))).not.toContain(
-      "artifact-stale",
+    const codesWithoutConsistency = codes(
+      validateProject({ projectRoot: root, checkConsistency: false }),
     );
+    expect(codesWithoutConsistency).not.toContain("artifact-stale");
   });
 
   it("reports an edited source before falling through to the staleness check", () => {

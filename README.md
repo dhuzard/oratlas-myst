@@ -59,8 +59,17 @@ site:
 Optionally, in `oratlas.yml` beside `myst.yml`:
 
 ```yaml
+# Stable across versions of this publication. Defaults to myst.yml's project.id.
+id: my-review
 canonical_url: https://example.org/my-review/
+version_label: v1.2.0
 output: .oratlas
+
+# Where the exact source bytes live. Without this, a consumer holding only your
+# published site cannot verify the source digests — see "Verification levels".
+source:
+  type: git
+  repository: https://github.com/lab/my-review
 ```
 
 <details>
@@ -114,6 +123,13 @@ npx oratlas-myst export     # writes .oratlas/
 npx myst build --html       # normal MyST build; copies the artifacts to the site root
 ```
 
+In CI, pass the commit being built so the manifest can name it — the config file naming a
+commit is itself part of that commit, so it cannot be hard-coded:
+
+```bash
+npx oratlas-myst export --source-commit "$GITHUB_SHA"
+```
+
 Then, any time — in CI, in a pre-commit hook, before a release:
 
 ```bash
@@ -144,13 +160,16 @@ https://example.org/my-review/oratlas/claims.jsonl    ← one claim occurrence p
 
 ```json
 {
-  "schemaVersion": "0.1.0",
-  "generator": { "name": "@oratlas/myst", "version": "0.1.0" },
+  "schemaVersion": "0.2.0",
+  "generator": { "name": "@oratlas/myst", "version": "0.2.0" },
   "publication": {
+    "id": "my-review",
     "canonicalUrl": "https://example.org/my-review/",
-    "title": "My review"
+    "title": "My review",
+    "version": { "sourcesSha256": "d9cc…", "label": "v1.2.0" },
+    "source": { "type": "git", "repository": "https://github.com/lab/my-review" }
   },
-  "myst": { "xref": "myst.xref.json" },
+  "adapter": { "type": "myst", "xref": "myst.xref.json" },
   "artifacts": {
     "claims": {
       "path": "oratlas/claims.jsonl",
@@ -167,12 +186,16 @@ One line of `oratlas/claims.jsonl`, expanded:
 
 ```json
 {
-  "schemaVersion": "0.1.0",
+  "schemaVersion": "0.2.0",
   "id": "hpa-axis-mediation",
   "text": "Persistent behavioural change after adolescent stress is mediated in part by lasting alterations in hypothalamic–pituitary–adrenal axis reactivity [@mccormick2010].",
   "claimType": "mechanistic",
   "qualification": "Rodent models only; evidence in humans is correlational.",
-  "target": { "identifier": "hpa-axis-mediation", "htmlId": "hpa-axis-mediation" },
+  "target": {
+    "type": "myst-xref",
+    "identifier": "hpa-axis-mediation",
+    "htmlId": "hpa-axis-mediation"
+  },
   "source": {
     "documentPath": "results.md",
     "documentSha256": "5b1f…",
@@ -199,6 +222,24 @@ Three digests, three questions: `documentSha256` — did this page change? `bloc
 this declaration's source block change? `declarationSha256` — did the author's assertion
 change, wherever it now lives? See [SPEC.md §8.3](SPEC.md#83-hashing).
 
+## Verification levels
+
+Your deployed site serves HTML, page data, `myst.xref.json` and the ORAtlas artifacts. It does
+**not** serve `results.md`. So there are two levels of verification, and which one a consumer
+reaches depends on whether you declare a `source`:
+
+```
+Level 1 — published structure          every consumer, from the site alone
+    the claim exists, at a resolvable location, with the digest the manifest declares
+
+Level 2 — source bytes                 needs publication.source
+    + documentSha256, blockSha256, declarationSha256, source selectors
+```
+
+A site with no public source is still a first-class participant at level 1. Declaring
+`source:` in `oratlas.yml` — a git repository, a DOI deposit or an archived bundle — is what
+lets a consumer reach level 2.
+
 ## How ORAtlas uses them
 
 ```
@@ -214,6 +255,10 @@ canonical ORAtlas graph binding
 The adapter stops at "exact claim occurrence". It never mints an ORAtlas canonical id, and it
 never claims two occurrences are the same claim. That decision belongs to ORAtlas and follows
 ORAtlas's own canonical-graph-identity rules.
+
+`publication.id` says which publication this is; `publication.version.sourcesSha256` says which
+version. A URL is not identity — publications move, get mirrored, and get replaced — so neither
+is derived from `canonicalUrl`.
 
 `myst.xref.json` resolves an identifier to where the built site serves it. `claims.jsonl` says
 what the claim is and where it is declared in the source. Neither reproduces the other; they
@@ -245,6 +290,11 @@ The richer manifest then keeps authority over everything it already declares. Se
   to ORAtlas. This package will not emit a per-claim truth score, because ORAtlas's TRUST
   model does not have one to emit.
 - **One MyST project per export.** Multi-project sites are not yet handled.
+- **Symlinked pages are skipped by discovery.** Following them would let a link walk outside
+  the project. Declare one in `project.toc` to include it deliberately.
+- **No ORAtlas ingestion yet.** Registering a published manifest with an ORAtlas instance is
+  not implemented on either side. See
+  [docs/integration-oratlas.md §5.0](docs/integration-oratlas.md#50-a-registration-endpoint-for-externally-hosted-manifests).
 
 ## Documentation
 

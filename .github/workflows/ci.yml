@@ -51,7 +51,11 @@ jobs:
         run: pnpm run test
 
       - name: Export the example
-        run: node dist/lib/cli/main.js export --project examples/basic
+        # `--source-commit` is how a git-backed publication names the commit it
+        # was built from; the config file naming it is part of that commit.
+        run: node dist/lib/cli/main.js export --project examples/basic --source-commit "$GITHUB_SHA"
+        env:
+          GITHUB_SHA: ${{ github.sha }}
 
       - name: Validate the example
         run: node dist/lib/cli/main.js validate --project examples/basic

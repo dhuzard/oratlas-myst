@@ -12,9 +12,14 @@ import {
 } from "./contracts/index.js";
 import { OratlasMystError } from "./errors.js";
 import { claimDeclarationSha256, sha256 } from "./hash.js";
-import { CLAIMS_ARTIFACT_PATH, MANIFEST_FILE_NAME, exportProject } from "./export.js";
+import {
+  CLAIMS_ARTIFACT_PATH,
+  MANIFEST_FILE_NAME,
+  exportProject,
+  publicationSourcesSha256,
+} from "./export.js";
 import { indexLines, parseDocument } from "./parse-claims.js";
-import { readProjectFile, resolveInsideProject } from "./project.js";
+import { discoverPages, readProjectFile, resolveInsideProject } from "./project.js";
 import { MAX_ARTIFACT_BYTES, readReviewManifest } from "./review-manifest.js";
 
 export interface ValidationIssue {
@@ -204,7 +209,7 @@ export function validateProject(options: ValidateOptions = {}): ValidationResult
 
   // --- declared paths ------------------------------------------------------
   for (const [label, path] of [
-    ["myst.xref", manifest.myst.xref],
+    ["adapter.xref", manifest.adapter.xref],
     ["artifacts.claims.path", manifest.artifacts.claims.path],
     ...(manifest.oratlas
       ? ([["oratlas.reviewManifest", manifest.oratlas.reviewManifest]] as const)
@@ -338,6 +343,35 @@ export function validateProject(options: ValidateOptions = {}): ValidationResult
         ),
       );
     }
+  }
+
+  // --- publication version digest -----------------------------------------
+  // The version digest is what gives a publication an exact version identity
+  // even when it exposes no repository, DOI or archive, so it is checked
+  // against the current document set rather than taken on trust.
+  try {
+    const pages = discoverPages(config).pages;
+    const documents = pages.map((page) => ({
+      path: page.path,
+      sha256: sha256(readProjectFile(projectRoot, page.path)),
+    }));
+    const expected = publicationSourcesSha256(documents);
+    if (expected !== manifest.publication.version.sourcesSha256) {
+      errors.push(
+        issue(
+          "publication-version-mismatch",
+          `publication.version.sourcesSha256 does not match the current document set (${documents.length} page(s)). A page changed, was added, or was removed since the last export.`,
+          manifestWhere,
+        ),
+      );
+    }
+  } catch (error) {
+    errors.push(
+      issue(
+        error instanceof OratlasMystError ? error.code : "page-discovery-failed",
+        `Could not enumerate the publication's pages: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    );
   }
 
   // --- source binding, hashes, selectors, targets --------------------------
@@ -480,7 +514,21 @@ export function validateProject(options: ValidateOptions = {}): ValidationResult
   // --- deterministic consistency with a fresh export -----------------------
   if (options.checkConsistency !== false && errors.length === 0) {
     try {
-      const fresh = exportProject({ projectRoot, write: false });
+      // `--source-commit` is a build-time input, not something the project
+      // carries, so a fresh export cannot rediscover it. Feed the recorded
+      // commit back in, or every git-backed publication would report its own
+      // artifacts as stale. The commit itself is not locally verifiable —
+      // checking it needs the repository — so this comparison deliberately
+      // covers everything *except* that value.
+      const recordedCommit =
+        manifest.publication.source?.type === "git"
+          ? manifest.publication.source.commit
+          : undefined;
+      const fresh = exportProject({
+        projectRoot,
+        write: false,
+        ...(recordedCommit ? { sourceCommit: recordedCommit } : {}),
+      });
       for (const file of fresh.files) {
         const onDisk = file.path === MANIFEST_FILE_NAME ? manifestFile.content : claimsFile.content;
         const expectedPath = file.path === MANIFEST_FILE_NAME ? MANIFEST_FILE_NAME : claimsPath;

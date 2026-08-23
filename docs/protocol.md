@@ -21,7 +21,7 @@ Two artifacts, joined on one string — the source-local claim id:
 myst.xref.json                        oratlas/claims.jsonl
 {                                     {
   "identifier": "my-claim",  ←──────→   "id": "my-claim",
-  "kind": "div",                        "target": { "identifier": "my-claim", … },
+  "kind": "div",                        "target": { "type": "myst-xref", "identifier": "my-claim", … },
   "url": "/results",                    "text": "Statement text.",
   "data": "/content/results.json"       "source": { "documentPath": "results.md", … }
 }                                     }
@@ -61,12 +61,16 @@ Take `results.md`:
 
 ```json
 {
-  "schemaVersion": "0.1.0",
+  "schemaVersion": "0.2.0",
   "id": "hpa-axis-mediation",
   "text": "Persistent behavioural change after adolescent stress is mediated in part by lasting alterations in hypothalamic–pituitary–adrenal axis reactivity [@mccormick2010].",
   "claimType": "mechanistic",
   "qualification": "Rodent models only; evidence in humans is correlational.",
-  "target": { "identifier": "hpa-axis-mediation", "htmlId": "hpa-axis-mediation" },
+  "target": {
+    "type": "myst-xref",
+    "identifier": "hpa-axis-mediation",
+    "htmlId": "hpa-axis-mediation"
+  },
   "source": {
     "documentPath": "results.md",
     "documentSha256": "5b1f…",
@@ -124,7 +128,7 @@ covers the whole block including fences. Either way the quoted span is byte-exac
 
 ```
 SHA-256(canonicalJson({
-  schemaVersion: "0.1.0",
+  schemaVersion: "0.2.0",
   id:            "hpa-axis-mediation",
   body:          "Persistent behavioural change…\n…\n[@mccormick2010].",   ← raw source
   claimType:     "mechanistic",
@@ -184,13 +188,138 @@ Array.from(pageSource).slice(start, end).join("") === record.selector.textQuote.
 re-runs the whole export in memory to confirm the on-disk artifacts are byte-identical to what
 the current source produces.
 
+One value is outside that comparison: a `source.commit` supplied at build time is fed back in
+from the manifest rather than rediscovered, since a fresh export has no way to know it.
+Verifying the commit itself needs the repository, which is level-2 territory.
+
+---
+
+## Verification levels: what a consumer can actually check
+
+This is the part that bites, so it is worth being concrete.
+
+Your deployed site serves this:
+
+```
+https://example.org/review/
+├── myst.xref.json            ✓ published
+├── oratlas.manifest.json     ✓ published
+├── oratlas/claims.jsonl      ✓ published
+├── index.html, results.html  ✓ published
+├── results.json              ✓ published   (the page data)
+└── results.md                ✗ NOT published
+```
+
+But a claim record says:
+
+```json
+"source": { "documentPath": "results.md", "documentSha256": "5b1f…" }
+```
+
+A consumer holding only the site cannot check that digest, because it cannot obtain the bytes.
+So there are two levels.
+
+**Level 1 — published-structure verification.** Everything below uses only published files:
+
+```js
+const manifest = await fetchJson(new URL("oratlas.manifest.json", base));
+
+// The artifact is the one the manifest declares.
+const claimsBytes = await fetchText(new URL(manifest.artifacts.claims.path, base));
+sha256(claimsBytes) === manifest.artifacts.claims.sha256;
+
+const claims = claimsBytes.trim().split("\n").map(JSON.parse);
+claims.length === manifest.artifacts.claims.records;
+
+// The target resolves in the toolchain's own inventory...
+const xref = await fetchJson(new URL(manifest.adapter.xref, base));
+const ref = xref.references.find((r) => r.identifier === claim.target.identifier);
+
+// ...and the page data it points at really contains the claim.
+const page = await fetchJson(new URL(ref.data.replace(/^\//, ""), base));
+const node = find(page.mdast, (n) => n.identifier === claim.target.identifier);
+node.html_id === claim.target.htmlId;
+node.data.oratlas.kind === "claim";
+```
+
+That proves the claim exists in the published structure at a resolvable location. It proves
+nothing about source bytes.
+
+**Level 2 — source-byte verification.** Needs the source, which the manifest says how to get:
+
+```json
+"source": { "type": "git", "repository": "https://github.com/lab/review", "commit": "0123…" }
+```
+
+With those bytes in hand, the four checks in the previous section apply. `publication.source`
+is a union — `git`, `doi`, `archive` — so a Zenodo deposit and a GitHub repository are
+distinguishable rather than both being "a URL".
+
+A publication that declares no source is still a first-class participant; it is simply limited
+to level 1, and `oratlas-myst export` says so in its notes.
+
+---
+
+## Which publication, and which version
+
+```json
+"publication": {
+  "id": "adolescent-stress-review",
+  "canonicalUrl": "https://example.org/adolescent-stress/",
+  "version": { "sourcesSha256": "d9cc…", "label": "v1.0.0" }
+}
+```
+
+`id` says _which publication_; `sourcesSha256` says _which version_. Deliberately not derived
+from `canonicalUrl`, because a URL is not identity: publications move, get mirrored, and get
+replaced by something else at the same address.
+
+`sourcesSha256` is a digest over the document set — every processed page as `{path, sha256}`,
+sorted by path — so it always exists, even for a plain website with no repository, DOI or
+archive. It changes when any page changes, is added, or is removed:
+
+| Change                           | `sourcesSha256` |
+| -------------------------------- | :-------------: |
+| Edit any page                    |     changes     |
+| Add a page                       |     changes     |
+| Remove a page                    |     changes     |
+| Edit `myst.yml` or `oratlas.yml` |        —        |
+
+The last row is deliberate: configuration configures the build, whereas claims bind to document
+bytes, and that is what this digest identifies.
+
+Neither field is an ORAtlas canonical identity. They are evidence for ORAtlas's own keying
+decision, not a substitute for it.
+
 ---
 
 ## Resolving a claim to a live URL
 
+There is one trap here, and it catches every subpath deploy.
+
+`myst.xref.json` `url` values are **site-root-relative** (`/`, `/results`), not relative to the
+publication:
+
+```js
+new URL("/results", "https://example.org/review/").href;
+// → "https://example.org/results"       ← wrong: the /review/ prefix vanished
+```
+
+Treat `canonicalUrl` as the site root instead — strip the leading slash first:
+
+```js
+import { resolvePublishedUrl } from "@oratlas/myst";
+
+resolvePublishedUrl("https://example.org/review/", "/results", "my-claim");
+// → "https://example.org/review/results#my-claim"
+```
+
+Put together:
+
 ```js
 const manifest = await fetchJson("https://example.org/review/oratlas.manifest.json");
-const xref = await fetchJson(new URL(manifest.myst.xref, base));
+const base = "https://example.org/review/";
+const xref = await fetchJson(new URL(manifest.adapter.xref, base));
 const claims = (await fetchText(new URL(manifest.artifacts.claims.path, base)))
   .trim()
   .split("\n")
@@ -199,9 +328,8 @@ const claims = (await fetchText(new URL(manifest.artifacts.claims.path, base)))
 for (const claim of claims) {
   const ref = xref.references.find((r) => r.identifier === claim.target.identifier);
   if (!ref) continue; // declared but not built
-  const url = new URL(ref.url, manifest.publication.canonicalUrl);
-  // → https://example.org/review/results
-  // and `#${claim.target.htmlId}` addresses the claim within that page.
+  const url = resolvePublishedUrl(base, ref.url, claim.target.htmlId);
+  // → https://example.org/review/results#hpa-axis-mediation
 }
 ```
 
@@ -241,9 +369,9 @@ With `review_manifest: review-manifest.json` in `oratlas.yml`, and that manifest
 
 ```json
 {
-  "schemaVersion": "0.1.0",
+  "schemaVersion": "0.2.0",
   "id": "hpa-axis-mediation",
-  "target": { "identifier": "hpa-axis-mediation", "htmlId": "hpa-axis-mediation" },
+  "target": { "type": "myst-xref", "identifier": "hpa-axis-mediation", "htmlId": "hpa-axis-mediation" },
   "source": { "documentPath": "results.md", "documentSha256": "5b1f…", "startLine": 9, "endLine": 16, "blockSha256": "a704…" },
   "selector": { … },
   "declarationSha256": "3c8e…"
