@@ -16,7 +16,7 @@ afterAll(cleanupProjects);
 
 const minimal: OratlasManifest = {
   schemaVersion: "0.2.0",
-  generator: { name: "@oratlas/myst", version: "0.2.0" },
+  generator: { name: "@neuronautix/myst", version: "0.2.1" },
   publication: { version: { sourcesSha256: sha256("") } },
   adapter: { type: "myst", xref: "myst.xref.json" },
   artifacts: {
@@ -108,7 +108,7 @@ describe("generated manifest", () => {
     const root = makeProject({ "index.md": `# I\n\n${claim("only", "A statement.")}` });
     const { manifest } = exportProject({ projectRoot: root, write: false });
     expect(manifest.schemaVersion).toBe(MANIFEST_SCHEMA_VERSION);
-    expect(manifest.generator).toEqual({ name: "@oratlas/myst", version: "0.2.0" });
+    expect(manifest.generator).toEqual({ name: "@neuronautix/myst", version: "0.2.1" });
   });
 
   it("points at MyST's own cross-reference inventory without reproducing it", () => {

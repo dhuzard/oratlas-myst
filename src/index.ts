@@ -1,5 +1,5 @@
 /**
- * `@oratlas/myst` — a portable MyST ↔ ORAtlas interoperability adapter.
+ * `@neuronautix/myst` — a portable MyST ↔ ORAtlas interoperability adapter.
  *
  * The default export is the MyST plugin. Everything else on this module is the
  * programmatic surface behind the `oratlas-myst` CLI.

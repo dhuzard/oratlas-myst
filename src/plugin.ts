@@ -3,7 +3,7 @@ import { claimDirective } from "./directive.js";
 import { PACKAGE_NAME, PACKAGE_VERSION } from "./version.js";
 
 /**
- * The `@oratlas/myst` MyST plugin.
+ * The `@neuronautix/myst` MyST plugin.
  *
  * v0.1 uses only extension points current MyST actually supports: a directive
  * that rewrites itself into standard MyST AST. It registers no custom renderer

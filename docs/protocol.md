@@ -308,7 +308,7 @@ new URL("/results", "https://example.org/review/").href;
 Treat `canonicalUrl` as the site root instead — strip the leading slash first:
 
 ```js
-import { resolvePublishedUrl } from "@oratlas/myst";
+import { resolvePublishedUrl } from "@neuronautix/myst";
 
 resolvePublishedUrl("https://example.org/review/", "/results", "my-claim");
 // → "https://example.org/review/results#my-claim"

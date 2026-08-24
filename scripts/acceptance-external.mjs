@@ -6,7 +6,7 @@
  * seen this repository:
  *
  *   fresh external MyST repo
- *     → install @oratlas/myst (from the packed tarball, as npm would deliver it)
+ *     → install @neuronautix/myst (from the packed tarball, as npm would deliver it)
  *     → oratlas-myst export      (through the installed `bin`)
  *     → myst build               (plugin resolved from node_modules)
  *     → three public artifacts at the site root
@@ -30,6 +30,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const offline = process.env.ORATLAS_ACCEPTANCE_OFFLINE === "1";
 const workspace = mkdtempSync(join(tmpdir(), "oratlas-acceptance-"));
+const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 let failed = false;
 
 function step(label) {
@@ -37,7 +38,10 @@ function step(label) {
 }
 
 function run(command, args, cwd, quiet = false) {
-  return execFileSync(command, args, {
+  const isWindowsShim = process.platform === "win32" && command.endsWith(".cmd");
+  const executable = isWindowsShim ? (process.env.ComSpec ?? "cmd.exe") : command;
+  const executableArgs = isWindowsShim ? ["/d", "/s", "/c", command, ...args] : args;
+  return execFileSync(executable, executableArgs, {
     cwd,
     encoding: "utf8",
     stdio: quiet ? ["ignore", "pipe", "pipe"] : "inherit",
@@ -45,11 +49,16 @@ function run(command, args, cwd, quiet = false) {
 }
 
 try {
-  step("pack @oratlas/myst as npm would publish it");
+  step("pack @neuronautix/myst as npm would publish it");
   if (!existsSync(join(repoRoot, "dist", "oratlas-myst.mjs"))) {
     throw new Error("Missing dist/. Run `pnpm run build` first.");
   }
-  const packed = run("npm", ["pack", "--json", "--pack-destination", workspace], repoRoot, true);
+  const packed = run(
+    npmCommand,
+    ["pack", "--json", "--pack-destination", workspace],
+    repoRoot,
+    true,
+  );
   const tarball = join(workspace, JSON.parse(packed)[0].filename);
   console.log(`packed ${tarball}`);
 
@@ -70,7 +79,7 @@ try {
       "  id: external-review",
       "  title: An entirely external review",
       "  plugins:",
-      "    - node_modules/@oratlas/myst/dist/oratlas-myst.mjs",
+      "    - node_modules/@neuronautix/myst/dist/oratlas-myst.mjs",
       "  static_files:",
       "    - .oratlas/oratlas.manifest.json",
       "    - .oratlas/oratlas",
@@ -106,11 +115,20 @@ try {
   }
   console.log(`created ${project}`);
 
-  step("install @oratlas/myst from the tarball");
-  run("npm", ["install", "--no-audit", "--no-fund", tarball, "mystmd@1.10.1"], project);
+  step("install @neuronautix/myst from the tarball");
+  run(npmCommand, ["install", "--no-audit", "--no-fund", tarball, "mystmd@1.10.1"], project);
 
   step("export through the installed bin");
-  run(join(project, "node_modules", ".bin", "oratlas-myst"), ["export"], project);
+  run(
+    join(
+      project,
+      "node_modules",
+      ".bin",
+      process.platform === "win32" ? "oratlas-myst.cmd" : "oratlas-myst",
+    ),
+    ["export"],
+    project,
+  );
 
   step("build the site with MyST");
   run(
@@ -152,6 +170,10 @@ try {
 
     const checks = [
       ["manifest schemaVersion is 0.2.0", manifest.schemaVersion === "0.2.0"],
+      [
+        "generator identifies @neuronautix/myst 0.2.1",
+        manifest.generator?.name === "@neuronautix/myst" && manifest.generator?.version === "0.2.1",
+      ],
       ["adapter type is myst", manifest.adapter?.type === "myst"],
       [
         "publication has an exact version identity",
@@ -180,7 +202,16 @@ try {
   }
 
   step("validate");
-  run(join(project, "node_modules", ".bin", "oratlas-myst"), ["validate"], project);
+  run(
+    join(
+      project,
+      "node_modules",
+      ".bin",
+      process.platform === "win32" ? "oratlas-myst.cmd" : "oratlas-myst",
+    ),
+    ["validate"],
+    project,
+  );
 } catch (error) {
   console.error(
     `\nAcceptance run failed: ${error instanceof Error ? error.message : String(error)}`,

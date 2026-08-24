@@ -1,6 +1,6 @@
 {
-  "name": "@oratlas/myst",
-  "version": "0.2.0",
+  "name": "@neuronautix/myst",
+  "version": "0.2.1",
   "description": "Portable MyST <-> ORAtlas interoperability adapter: declare scientific claims in MyST source and export deterministic, machine-readable federation artifacts.",
   "keywords": [
     "myst",
@@ -18,6 +18,9 @@
   },
   "license": "MIT",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=20.0.0"
   },
@@ -38,7 +41,7 @@
     "./schemas/*": "./schemas/*"
   },
   "bin": {
-    "oratlas-myst": "./dist/lib/cli/main.js"
+    "oratlas-myst": "dist/lib/cli/main.js"
   },
   "files": [
     "dist",
