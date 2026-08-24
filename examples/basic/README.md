@@ -1,6 +1,6 @@
 # examples/basic
 
-A small, working MyST publication using `@oratlas/myst`. Two pages, four explicitly declared
+A small, working MyST publication using `@neuronautix/myst`. Two pages, four explicitly declared
 claims, real citations, and cross-references to the claims from ordinary prose.
 
 ## Run it

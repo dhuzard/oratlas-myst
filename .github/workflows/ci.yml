@@ -88,7 +88,7 @@ jobs:
       - run: pnpm run build
 
       # The frozen v0.2 acceptance criterion: a fresh external MyST project
-      # installs @oratlas/myst from the packed tarball, exports through the
+      # installs @neuronautix/myst from the packed tarball, exports through the
       # installed bin, builds with the real book-theme, serves the three
       # artifacts at its site root, and validates. This is the only check that
       # exercises the published `files` list, the `bin` entry, and the plugin

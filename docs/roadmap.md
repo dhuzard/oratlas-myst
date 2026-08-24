@@ -28,7 +28,7 @@ Anything learned during integration lands in a later `schemaVersion`, not in thi
 consumer that implements `0.2.0` can rely on it not changing underneath them.
 
 The acceptance criterion for the freeze runs in CI on every change
-(`pnpm run acceptance`): a fresh external MyST project installs `@oratlas/myst` from the packed
+(`pnpm run acceptance`): a fresh external MyST project installs `@neuronautix/myst` from the packed
 tarball, exports through the installed `bin`, builds with the real `book-theme`, serves
 `myst.xref.json`, `oratlas.manifest.json` and `oratlas/claims.jsonl` at its site root, and
 validates. It is the only check that exercises the published `files` list, the `bin` entry, and

@@ -1,6 +1,6 @@
 # Architecture
 
-This document records the decisions behind `@oratlas/myst` v0.2 and the MyST behaviour they
+This document records the decisions behind `@neuronautix/myst` v0.2 and the MyST behaviour they
 were verified against. Where a decision departs from what seemed obvious at the outset, the
 reason is stated.
 

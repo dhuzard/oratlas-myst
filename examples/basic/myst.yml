@@ -2,7 +2,7 @@ version: 1
 project:
   id: oratlas-myst-example-basic
   title: Adolescent stress and persistent behavioural change
-  description: A small example review demonstrating @oratlas/myst claim declarations.
+  description: A small example review demonstrating @neuronautix/myst claim declarations.
   license: CC-BY-4.0
   authors:
     - name: Example Author

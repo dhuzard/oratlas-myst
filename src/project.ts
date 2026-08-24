@@ -186,7 +186,7 @@ export function discoverPages(config: LoadedConfig): DiscoveredPages {
       if (unsupported) {
         skipped.push({
           path: normalized,
-          reason: `${unsupported} pages are not parsed by @oratlas/myst`,
+          reason: `${unsupported} pages are not parsed by @neuronautix/myst`,
         });
         continue;
       }

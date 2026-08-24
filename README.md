@@ -1,4 +1,4 @@
-# @oratlas/myst
+# @neuronautix/myst
 
 [![schema 0.2.0 — frozen](https://img.shields.io/badge/schema-0.2.0%20frozen-informational)](SPEC.md)
 
@@ -7,9 +7,12 @@ your MyST source; publish deterministic, machine-readable artifacts that let
 [ORAtlas](https://github.com/dhuzard/oratlas) — or anything else — discover them and bind each
 one to an exact source occurrence.
 
+Package release `0.2.1` implements the frozen interoperability schema `0.2.0`. Package versions
+identify the software distribution; `schemaVersion` identifies the scientific contract.
+
 ```
 MyST            = structured publication
-@oratlas/myst   = publication-side scientific identity adapter   ← this package
+@neuronautix/myst = publication-side scientific identity adapter   ← this package
 ORAtlas         = federation, knowledge graph, assessment, discussion
 ```
 
@@ -35,7 +38,7 @@ than a guess.
 ## Install
 
 ```bash
-npm install --save-dev @oratlas/myst     # or: pnpm add -D @oratlas/myst
+npm install --save-dev @neuronautix/myst     # or: pnpm add -D @neuronautix/myst
 ```
 
 Add the plugin and publish the generated artifacts, in `myst.yml`:
@@ -46,7 +49,7 @@ project:
   id: my-review
   title: My review
   plugins:
-    - node_modules/@oratlas/myst/dist/oratlas-myst.mjs
+    - node_modules/@neuronautix/myst/dist/oratlas-myst.mjs
   static_files:
     # Serves them at /oratlas.manifest.json and /oratlas/claims.jsonl
     - .oratlas/oratlas.manifest.json
@@ -163,7 +166,7 @@ https://example.org/my-review/oratlas/claims.jsonl    ← one claim occurrence p
 ```json
 {
   "schemaVersion": "0.2.0",
-  "generator": { "name": "@oratlas/myst", "version": "0.2.0" },
+  "generator": { "name": "@neuronautix/myst", "version": "0.2.1" },
   "publication": {
     "id": "my-review",
     "canonicalUrl": "https://example.org/my-review/",

@@ -1,4 +1,4 @@
-# Configuration for @oratlas/myst.
+# Configuration for @neuronautix/myst.
 #
 # A dedicated file rather than a namespaced key in myst.yml: MyST validates
 # project keys strictly and prints "extra key ignored" for anything it does not

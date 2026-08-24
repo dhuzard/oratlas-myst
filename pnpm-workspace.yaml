@@ -1,6 +1,8 @@
 packages:
   - "."
 
+autoInstallPeers: true
+
 # esbuild ships prebuilt binaries via optional deps and needs its install
 # script to place the platform binary.
 onlyBuiltDependencies:

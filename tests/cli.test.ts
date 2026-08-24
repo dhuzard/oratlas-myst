@@ -59,7 +59,7 @@ describe("argument parsing", () => {
 
 describe("oratlas-myst CLI", () => {
   it("prints usage and its version", () => {
-    expect(runCli(["--version"]).stdout.trim()).toBe("0.2.0");
+    expect(runCli(["--version"]).stdout.trim()).toBe("0.2.1");
     const help = runCli(["--help"]);
     expect(help.status).toBe(0);
     expect(help.stdout).toContain("oratlas-myst <command>");
