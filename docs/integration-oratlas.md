@@ -299,6 +299,10 @@ None of these are needed for ingestion, and none should be inferred from the art
 
 ## 6. Ingestion checklist
 
+For manifest `0.3.0`, implement the pure normalization contract in
+[`migration-0.3.md`](migration-0.3.md): exact-version ordered contributors and one optional
+source-declared production assertion. Keep the frozen 0.2 adapter path unchanged.
+
 For an implementer on the ORAtlas side:
 
 - [ ] Reject a `schemaVersion` you do not implement. Do not partially read it.
@@ -315,6 +319,10 @@ For an implementer on the ORAtlas side:
 - [ ] Verify `artifacts.claims.sha256` against the fetched bytes.
 - [ ] Cap the bytes and record count you will read.
 - [ ] Reject an unknown key: both objects are closed.
+- [ ] For 0.3, retain `contributors` in exact array/position order as source-declared
+      PublicationVersion snapshots. Do not resolve identities.
+- [ ] For 0.3, normalize `production` as a source-declared assertion and keep its actors out of
+      scholarly-credit semantics. Never treat its mode as quality, TRUST, or certification.
 - [ ] Verify `source.documentSha256` against the page source you hold.
 - [ ] Treat `selector.*` as the `oratlas-myst-source-utf8-v1` frame. Never mix it with
       `myst-rendered-text-v1`.

@@ -31,7 +31,7 @@ describe("npm package", () => {
     const packed = packDryRun();
     expect({ name: packed.name, version: packed.version }).toEqual({
       name: "@neuronautix/myst",
-      version: "0.2.1",
+      version: "0.3.0",
     });
 
     const paths = new Set(packed.files.map((file) => file.path));
@@ -40,6 +40,10 @@ describe("npm package", () => {
       "dist/lib/index.js",
       "dist/lib/plugin.js",
       "dist/oratlas-myst.mjs",
+      "schemas/oratlas-manifest.schema.json",
+      "schemas/oratlas-claim.schema.json",
+      "protocol/examples/human.manifest.json",
+      "protocol/examples/agentic-no-contributors.manifest.json",
     ]) {
       expect(paths.has(expected), `${expected} is missing from npm pack`).toBe(true);
     }

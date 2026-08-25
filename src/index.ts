@@ -43,6 +43,7 @@ export { discoverPages, readProjectFile, resolveInsideProject } from "./project.
 export type { DiscoveredPages, ProjectPage } from "./project.js";
 
 export { claimBodyToText } from "./claim-text.js";
+export { contributorsFromMyst } from "./contributors.js";
 export { indexLines, parseDocument } from "./parse-claims.js";
 export type { ClaimOccurrence, ClaimProblem, ParsedDocument } from "./parse-claims.js";
 

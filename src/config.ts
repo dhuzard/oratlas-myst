@@ -6,7 +6,16 @@ import {
   SAFE_LOCAL_PATH_MESSAGE,
   SAFE_RELATIVE_PATH_MESSAGE,
 } from "./contracts/paths.js";
-import { publicationSourceSchema, type PublicationSource } from "./contracts/manifest.js";
+import {
+  contributorsSchema,
+  LEGACY_MANIFEST_SCHEMA_VERSION,
+  MANIFEST_SCHEMA_VERSION,
+  productionSchema,
+  publicationSourceSchema,
+  type Contributor,
+  type Production,
+  type PublicationSource,
+} from "./contracts/manifest.js";
 import { httpsUrlSchema } from "./contracts/primitives.js";
 import { projectFileExists, readProjectFile } from "./fs-safe.js";
 
@@ -18,6 +27,8 @@ export const DEFAULT_OUTPUT_DIR = ".oratlas";
 export const MAX_CONFIG_BYTES = 1_000_000;
 
 export interface OratlasConfig {
+  /** Explicit export protocol. Omitted means the package's current protocol. */
+  schemaVersion?: typeof LEGACY_MANIFEST_SCHEMA_VERSION | typeof MANIFEST_SCHEMA_VERSION;
   /** Source-local publication identifier, stable across versions. */
   id?: string;
   /** Absolute https URL the built publication is served from. */
@@ -35,6 +46,10 @@ export interface OratlasConfig {
   versionLabel?: string;
   /** Where this publication's exact source bytes can be obtained. */
   source?: PublicationSource;
+  /** Explicit scholarly-credit declarations; overrides MyST project authors when present. */
+  contributors?: Contributor[];
+  /** Explicit source-declared production provenance. Never inferred. */
+  production?: Production;
 }
 
 export interface MystProjectConfig {
@@ -47,6 +62,10 @@ export interface MystProjectConfig {
   toc?: unknown;
   /** `project.static_files`, if the project declares any. */
   staticFiles: string[];
+  /** Standard MyST project-level author metadata, retained raw for deterministic mapping. */
+  authors?: unknown[];
+  /** Standard MyST affiliation declarations used by author references. */
+  affiliations?: unknown[];
 }
 
 export interface LoadedConfig {
@@ -122,6 +141,8 @@ export function loadMystConfig(projectRoot: string): MystProjectConfig {
     ...(id ? { id } : {}),
     toc: project.toc,
     staticFiles: asStringArray(project.static_files),
+    ...(Array.isArray(project.authors) ? { authors: project.authors } : {}),
+    ...(Array.isArray(project.affiliations) ? { affiliations: project.affiliations } : {}),
   };
 }
 
@@ -174,6 +195,148 @@ function readSource(raw: Record<string, unknown>): PublicationSource | undefined
   return parsed.data;
 }
 
+function assertKnownKeys(
+  record: Record<string, unknown>,
+  known: readonly string[],
+  where: string,
+): void {
+  const allowed = new Set(known);
+  const unknown = Object.keys(record).filter((key) => !allowed.has(key));
+  if (unknown.length > 0) {
+    throw invalid(`${where} contains unknown key(s): ${unknown.sort().join(", ")}.`);
+  }
+}
+
+function readContributors(raw: Record<string, unknown>): Contributor[] | undefined {
+  if (raw.contributors === undefined) return undefined;
+  if (!Array.isArray(raw.contributors)) {
+    throw invalid("'contributors' must be an array.");
+  }
+  const mapped = raw.contributors.map((entry, index) => {
+    const where = `contributors[${index}]`;
+    const contributor = asRecord(entry);
+    if (!contributor) throw invalid(`${where} must be a mapping.`);
+    assertKnownKeys(
+      contributor,
+      [
+        "key",
+        "kind",
+        "name",
+        "given_name",
+        "family_name",
+        "orcid",
+        "ror",
+        "identifiers",
+        "affiliations",
+        "roles",
+        "position",
+        "url",
+      ],
+      where,
+    );
+    const identifiers = Array.isArray(contributor.identifiers)
+      ? [...contributor.identifiers]
+      : contributor.identifiers === undefined
+        ? []
+        : contributor.identifiers;
+    if (!Array.isArray(identifiers)) {
+      throw invalid(`${where}.identifiers must be an array.`);
+    }
+    if (contributor.orcid !== undefined) {
+      identifiers.push({ scheme: "orcid", value: contributor.orcid });
+    }
+    if (contributor.ror !== undefined) {
+      identifiers.push({ scheme: "ror", value: contributor.ror });
+    }
+    return {
+      sourceContributorKey: contributor.key,
+      kind: contributor.kind,
+      displayName: contributor.name,
+      ...(contributor.given_name === undefined ? {} : { givenName: contributor.given_name }),
+      ...(contributor.family_name === undefined ? {} : { familyName: contributor.family_name }),
+      ...(identifiers.length === 0 ? {} : { identifiers }),
+      ...(contributor.affiliations === undefined ? {} : { affiliations: contributor.affiliations }),
+      roles: contributor.roles,
+      position: contributor.position ?? index + 1,
+      ...(contributor.url === undefined ? {} : { publicUrl: contributor.url }),
+    };
+  });
+  const parsed = contributorsSchema.safeParse(mapped);
+  if (!parsed.success) {
+    throw invalid(
+      "'contributors' is not a valid scholarly contributor declaration.",
+      parsed.error.issues
+        .map((issue) => `contributors.${issue.path.join(".") || "(root)"}: ${issue.message}`)
+        .join("; "),
+    );
+  }
+  return parsed.data;
+}
+
+function readProduction(raw: Record<string, unknown>): Production | undefined {
+  if (raw.production === undefined) return undefined;
+  const value = asRecord(raw.production);
+  if (!value) throw invalid("'production' must be a mapping.");
+  assertKnownKeys(
+    value,
+    ["source_assertion_key", "mode", "actors", "statement", "public_evidence_url"],
+    "production",
+  );
+  if (!Array.isArray(value.actors)) throw invalid("'production.actors' must be an array.");
+  const actors = value.actors.map((entry, index) => {
+    const actor = asRecord(entry);
+    const where = `production.actors[${index}]`;
+    if (!actor) throw invalid(`${where} must be a mapping.`);
+    assertKnownKeys(
+      actor,
+      [
+        "id",
+        "kind",
+        "name",
+        "identifier",
+        "version",
+        "provider",
+        "model",
+        "model_version",
+        "url",
+        "activities",
+      ],
+      where,
+    );
+    return {
+      id: actor.id,
+      kind: actor.kind,
+      ...(actor.name === undefined ? {} : { name: actor.name }),
+      ...(actor.identifier === undefined ? {} : { identifier: actor.identifier }),
+      ...(actor.version === undefined ? {} : { version: actor.version }),
+      ...(actor.provider === undefined ? {} : { provider: actor.provider }),
+      ...(actor.model === undefined ? {} : { model: actor.model }),
+      ...(actor.model_version === undefined ? {} : { modelVersion: actor.model_version }),
+      ...(actor.url === undefined ? {} : { publicUrl: actor.url }),
+      activities: actor.activities,
+    };
+  });
+  const parsed = productionSchema.safeParse({
+    sourceAssertionKey: value.source_assertion_key ?? "publication-production",
+    strength: "source-declared",
+    mode: value.mode,
+    actors,
+    ...(value.statement === undefined ? {} : { statement: value.statement }),
+    ...(value.public_evidence_url === undefined
+      ? {}
+      : { publicEvidenceUrl: value.public_evidence_url }),
+  });
+  if (!parsed.success) {
+    throw invalid(
+      "'production' is not a valid source declaration.",
+      parsed.error.issues
+        .map((issue) => `production.${issue.path.join(".") || "(root)"}: ${issue.message}`)
+        .join("; "),
+    );
+  }
+  return parsed.data;
+}
+
 /**
  * Read the optional `oratlas.yml`.
  *
@@ -196,6 +359,7 @@ export function loadOratlasConfig(projectRoot: string): {
   );
 
   const known = new Set([
+    "schema_version",
     "id",
     "canonical_url",
     "output",
@@ -203,6 +367,8 @@ export function loadOratlasConfig(projectRoot: string): {
     "title",
     "version_label",
     "source",
+    "contributors",
+    "production",
   ]);
   const unknown = Object.keys(raw).filter((key) => !known.has(key));
   if (unknown.length > 0) {
@@ -214,6 +380,18 @@ export function loadOratlasConfig(projectRoot: string): {
   }
 
   const config: OratlasConfig = { ...defaults };
+
+  if (raw.schema_version !== undefined) {
+    if (
+      raw.schema_version !== LEGACY_MANIFEST_SCHEMA_VERSION &&
+      raw.schema_version !== MANIFEST_SCHEMA_VERSION
+    ) {
+      throw invalid(
+        `'schema_version' must be '${LEGACY_MANIFEST_SCHEMA_VERSION}' or '${MANIFEST_SCHEMA_VERSION}'.`,
+      );
+    }
+    config.schemaVersion = raw.schema_version;
+  }
 
   const id = readString(raw, "id", 200);
   if (id) config.id = id;
@@ -258,6 +436,22 @@ export function loadOratlasConfig(projectRoot: string): {
 
   const source = readSource(raw);
   if (source) config.source = source;
+
+  const contributors = readContributors(raw);
+  if (contributors !== undefined) config.contributors = contributors;
+
+  const production = readProduction(raw);
+  if (production) config.production = production;
+
+  if (
+    config.schemaVersion === LEGACY_MANIFEST_SCHEMA_VERSION &&
+    (config.contributors !== undefined || config.production !== undefined)
+  ) {
+    throw invalid(
+      `'schema_version: ${LEGACY_MANIFEST_SCHEMA_VERSION}' cannot declare contributors or production.`,
+      `Use schema_version: ${MANIFEST_SCHEMA_VERSION} for the additive declarations.`,
+    );
+  }
 
   return { config, present: true };
 }

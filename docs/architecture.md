@@ -364,14 +364,26 @@ MyST validates `project` keys strictly. A namespaced block under `project:` prod
 The configuration is ignored _and_ the author gets a permanent warning. That is not a safe
 namespaced extension point, so configuration lives in a dedicated `oratlas.yml`.
 
-The file is entirely optional; the defaults work. Its keys are `id`, `canonical_url`, `output`,
-`review_manifest`, `title`, `version_label` and `source`, and an unknown key is a hard error
+The file is entirely optional; the defaults work. Its keys are `schema_version`, `id`,
+`canonical_url`, `output`, `review_manifest`, `title`, `version_label`, `source`, `contributors`,
+and `production`, and an unknown key is a hard error
 rather than a silent no-op — a typo in a config key should not quietly disable the thing it was
 meant to configure. The `source` block is validated by the same Zod union that the manifest
 emits, so the config surface and the artifact can never disagree about what a valid source
 descriptor is.
 
 There is no ORAtlas server URL, because nothing here needs one.
+
+Schema 0.3 keeps three independent channels: scholarly credit (`contributors`), explicitly
+declared production provenance (`production`), and transport (`adapter`). The standard MyST
+author contract is read only for scholarly credit. Nothing in dependencies, plugins, source
+text, or build configuration is inspected to infer production.
+
+The mapper is pinned to the installed `myst-frontmatter@1.10.0` contract used by the current
+MyST dependencies: project `authors` expose `id`, `name`/parsed given and family names, `orcid`,
+`corresponding`, `affiliations`, `url`, and collaboration/organization metadata. Only those
+documented deterministic fields are read; MyST's richer CRediT `roles` are not guessed into the
+bounded scholarly-role vocabulary.
 
 ---
 

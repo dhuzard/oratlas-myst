@@ -1,14 +1,15 @@
 # @neuronautix/myst
 
-[![schema 0.2.0 — frozen](https://img.shields.io/badge/schema-0.2.0%20frozen-informational)](SPEC.md)
+[![schema 0.3.0](https://img.shields.io/badge/schema-0.3.0-informational)](SPEC.md)
 
 **A portable MyST ↔ ORAtlas interoperability adapter.** Declare scientific claims explicitly in
 your MyST source; publish deterministic, machine-readable artifacts that let
 [ORAtlas](https://github.com/dhuzard/oratlas) — or anything else — discover them and bind each
 one to an exact source occurrence.
 
-Package release `0.2.1` implements the frozen interoperability schema `0.2.0`. Package versions
-identify the software distribution; `schemaVersion` identifies the scientific contract.
+Package implementation `0.3.0` adds optional scholarly contributors and explicit production
+provenance. Frozen schema `0.2.0` remains supported. Package versions identify the software
+distribution; `schemaVersion` identifies the scientific contract.
 
 ```
 MyST            = structured publication
@@ -48,6 +49,9 @@ version: 1
 project:
   id: my-review
   title: My review
+  authors:
+    - id: alice
+      name: Alice Smith
   plugins:
     - node_modules/@neuronautix/myst/dist/oratlas-myst.mjs
   static_files:
@@ -75,6 +79,20 @@ output: .oratlas
 source:
   type: git
   repository: https://github.com/lab/my-review
+
+# Optional. Production is emitted only from this explicit declaration.
+production:
+  mode: hybrid
+  actors:
+    - id: workflow
+      kind: workflow
+      name: Academic Research Skills
+      version: 1.2.0
+      activities: [evidence-search, evidence-synthesis, drafting]
+    - id: lead-editor
+      kind: person
+      name: Alice Smith
+      activities: [editing, reviewing]
 ```
 
 <details>
@@ -165,8 +183,8 @@ https://example.org/my-review/oratlas/claims.jsonl    ← one claim occurrence p
 
 ```json
 {
-  "schemaVersion": "0.2.0",
-  "generator": { "name": "@neuronautix/myst", "version": "0.2.1" },
+  "schemaVersion": "0.3.0",
+  "generator": { "name": "@neuronautix/myst", "version": "0.3.0" },
   "publication": {
     "id": "my-review",
     "canonicalUrl": "https://example.org/my-review/",
@@ -183,9 +201,56 @@ https://example.org/my-review/oratlas/claims.jsonl    ← one claim occurrence p
       "sha256": "1c7f…",
       "declarations": "publication-source"
     }
+  },
+  "contributors": [
+    {
+      "sourceContributorKey": "alice",
+      "kind": "person",
+      "displayName": "Alice Smith",
+      "roles": ["author"],
+      "position": 1
+    }
+  ],
+  "production": {
+    "sourceAssertionKey": "publication-production",
+    "strength": "source-declared",
+    "mode": "hybrid",
+    "actors": [
+      {
+        "id": "workflow",
+        "kind": "workflow",
+        "name": "Academic Research Skills",
+        "version": "1.2.0",
+        "activities": ["evidence-search", "evidence-synthesis", "drafting"]
+      },
+      {
+        "id": "lead-editor",
+        "kind": "person",
+        "name": "Alice Smith",
+        "activities": ["editing", "reviewing"]
+      }
+    ]
   }
 }
 ```
+
+Standard `project.authors` in `myst.yml` supply contributors by default. For an explicit group
+author or non-author scholarly role, declare `contributors` in `oratlas.yml`; see
+[`protocol/examples`](protocol/examples). Contributors and production are independent. Software,
+workflows, and AI systems can be production actors but can never be scholarly contributors.
+
+```yaml
+contributors:
+  - key: consortium
+    kind: organization
+    name: Example Research Consortium
+    ror: https://ror.org/03yrm5c26
+    url: https://example.org/consortium
+    roles: [group-author]
+```
+
+No production block is inferred from installed packages, plugins, repository history, or prose.
+No declaration means no `production` field—not an automatic `mode: human`.
 
 One line of `oratlas/claims.jsonl`, expanded:
 
@@ -297,18 +362,16 @@ The richer manifest then keeps authority over everything it already declares. Se
 - **One MyST project per export.** Multi-project sites are not yet handled.
 - **Symlinked pages are skipped by discovery.** Following them would let a link walk outside
   the project. Declare one in `project.toc` to include it deliberately.
-- **No ORAtlas ingestion yet.** Registering a published manifest with an ORAtlas instance is
-  not implemented on either side. See
-  [docs/integration-oratlas.md §5.0](docs/integration-oratlas.md#50-a-registration-endpoint-for-externally-hosted-manifests).
 
 ## Documentation
 
 |                                                            |                                                                 |
 | ---------------------------------------------------------- | --------------------------------------------------------------- |
-| [SPEC.md](SPEC.md)                                         | Normative v0.1 interoperability specification                   |
+| [SPEC.md](SPEC.md)                                         | Normative 0.2/0.3 interoperability specification                |
 | [docs/protocol.md](docs/protocol.md)                       | Field-by-field walkthrough with worked examples                 |
 | [docs/architecture.md](docs/architecture.md)               | Design decisions, trust boundaries, MyST compatibility findings |
 | [docs/integration-oratlas.md](docs/integration-oratlas.md) | How ORAtlas ingests these artifacts, and what it still needs    |
+| [docs/migration-0.3.md](docs/migration-0.3.md)             | 0.2 compatibility and 0.3 consumer normalization                |
 | [docs/roadmap.md](docs/roadmap.md)                         | What is in v0.1 and what is not                                 |
 | [examples/basic](examples/basic)                           | A working multi-page example                                    |
 

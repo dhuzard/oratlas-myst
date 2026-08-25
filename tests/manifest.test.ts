@@ -47,7 +47,7 @@ describe("oratlas.manifest.json schema", () => {
   });
 
   it("rejects an unexpected schema version", () => {
-    const result = oratlasManifestSchema.safeParse({ ...minimal, schemaVersion: "0.3.0" });
+    const result = oratlasManifestSchema.safeParse({ ...minimal, schemaVersion: "0.4.0" });
     expect(result.success).toBe(false);
   });
 
@@ -108,7 +108,7 @@ describe("generated manifest", () => {
     const root = makeProject({ "index.md": `# I\n\n${claim("only", "A statement.")}` });
     const { manifest } = exportProject({ projectRoot: root, write: false });
     expect(manifest.schemaVersion).toBe(MANIFEST_SCHEMA_VERSION);
-    expect(manifest.generator).toEqual({ name: "@neuronautix/myst", version: "0.2.1" });
+    expect(manifest.generator).toEqual({ name: "@neuronautix/myst", version: "0.3.0" });
   });
 
   it("points at MyST's own cross-reference inventory without reproducing it", () => {
@@ -140,7 +140,7 @@ describe("generated manifest", () => {
     exportProject({ projectRoot: root });
     const content = readFileSync(join(root, ".oratlas", MANIFEST_FILE_NAME), "utf8");
     expect(content.endsWith("}\n")).toBe(true);
-    expect(content).toContain('\n  "schemaVersion": "0.2.0",');
+    expect(content).toContain('\n  "schemaVersion": "0.3.0",');
   });
 
   it("carries no mutable or federated ORAtlas state", () => {

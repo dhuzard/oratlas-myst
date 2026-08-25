@@ -12,6 +12,27 @@ every artifact-format change therefore requires a new `schemaVersion`.
 
 ## [Unreleased]
 
+## [0.3.0] — release candidate
+
+Artifact manifest `schemaVersion`: `0.3.0`. Claim record schema remains frozen at `0.2.0`.
+This version is prepared but has not been tagged, released, or published.
+
+### Added
+
+- Ordered, exact-version person and organization scholarly contributor declarations, with
+  deterministic mapping from standard MyST author metadata.
+- Optional explicit `source-declared` production provenance with bounded modes, actor kinds,
+  activities, and actor metadata.
+- Dual validation/export support for frozen manifest `0.2.0` and additive manifest `0.3.0`, plus
+  checked-in acceptance fixtures and migration examples.
+
+### Security and semantics
+
+- Production is never inferred from dependencies, plugins, git history, prose, filenames, CI,
+  or AI libraries.
+- ORCID/ROR values remain offline source declarations; no identity resolution or merging occurs.
+- Scholarly credit, production provenance, and the MyST format adapter remain orthogonal.
+
 ## [0.2.1] — 2026-08-24
 
 Artifact `schemaVersion`: `0.2.0` (unchanged).

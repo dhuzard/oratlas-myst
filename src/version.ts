@@ -7,4 +7,4 @@
  * (`tests/schemas.test.ts`) keeps these in step with `package.json`.
  */
 export const PACKAGE_NAME = "@neuronautix/myst";
-export const PACKAGE_VERSION = "0.2.1";
+export const PACKAGE_VERSION = "0.3.0";

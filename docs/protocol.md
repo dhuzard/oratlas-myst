@@ -30,6 +30,11 @@ myst.xref.json                        oratlas/claims.jsonl
 
 Neither reproduces the other. A consumer that wants a live URL for a claim joins them.
 
+Manifest schema `0.3.0` adds two independent exact-version channels outside `claims.jsonl`:
+`contributors` for scholarly credit and optional `production` for explicit source-declared
+production provenance. Claim records remain on their frozen `0.2.0` schema. See the complete
+examples in [`protocol/examples`](../protocol/examples).
+
 ---
 
 ## Source → record, end to end

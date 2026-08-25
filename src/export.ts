@@ -3,8 +3,10 @@ import { dirname, join } from "node:path";
 import { createHtmlId } from "myst-common";
 import { canonicalJson, compareStrings } from "./canonical-json.js";
 import { loadConfig, type LoadedConfig } from "./config.js";
+import { contributorsFromMyst } from "./contributors.js";
 import {
   CLAIM_RECORD_SCHEMA_VERSION,
+  LEGACY_MANIFEST_SCHEMA_VERSION,
   MANIFEST_SCHEMA_VERSION,
   SELECTOR_REPRESENTATION,
   gitSourceSchema,
@@ -13,6 +15,8 @@ import {
   type ClaimDeclarationAuthority,
   type ClaimRecord,
   type OratlasManifest,
+  type OratlasManifestV020,
+  type OratlasManifestV030,
   type PublicationSource,
   type PublicationVersion,
 } from "./contracts/index.js";
@@ -44,6 +48,11 @@ export interface ExportOptions {
    * which is exactly the case where provenance matters most.
    */
   sourceCommit?: string;
+  /**
+   * Protocol to emit. Normally selected by `oratlas.yml` or the current
+   * default; validation uses this to reproduce an observed legacy artifact.
+   */
+  protocolVersion?: typeof LEGACY_MANIFEST_SCHEMA_VERSION | typeof MANIFEST_SCHEMA_VERSION;
 }
 
 export interface ExportResult {
@@ -157,11 +166,16 @@ function buildClaimRecord(
  * the build; the claims bind to the document bytes, and that is what this
  * digest identifies.
  */
-export function publicationSourcesSha256(documents: { path: string; sha256: string }[]): string {
+export function publicationSourcesSha256(
+  documents: { path: string; sha256: string }[],
+  schemaVersion:
+    | typeof LEGACY_MANIFEST_SCHEMA_VERSION
+    | typeof MANIFEST_SCHEMA_VERSION = MANIFEST_SCHEMA_VERSION,
+): string {
   const sorted = [...documents].sort((left, right) => compareStrings(left.path, right.path));
   return sha256(
     canonicalJson({
-      schemaVersion: MANIFEST_SCHEMA_VERSION,
+      schemaVersion,
       documents: sorted.map(({ path, sha256: digest }) => ({ path, sha256: digest })),
     }),
   );
@@ -215,6 +229,18 @@ export function exportProject(options: ExportOptions = {}): ExportResult {
   const projectRoot = options.projectRoot ?? process.cwd();
   const config = loadConfig(projectRoot);
   const notes: string[] = [];
+  const protocolVersion =
+    options.protocolVersion ?? config.oratlas.schemaVersion ?? MANIFEST_SCHEMA_VERSION;
+  if (
+    protocolVersion === LEGACY_MANIFEST_SCHEMA_VERSION &&
+    (config.oratlas.contributors !== undefined || config.oratlas.production !== undefined)
+  ) {
+    throw new OratlasMystError(
+      "legacy-protocol-declaration-unsupported",
+      `Protocol ${LEGACY_MANIFEST_SCHEMA_VERSION} cannot carry contributors or production declarations.`,
+      `Export protocol ${MANIFEST_SCHEMA_VERSION}, or remove those additive declarations.`,
+    );
+  }
 
   const discovered = discoverPages(config);
   for (const skip of discovered.skipped) {
@@ -311,7 +337,7 @@ export function exportProject(options: ExportOptions = {}): ExportResult {
   const source = resolveSource(config.oratlas.source, options.sourceCommit);
 
   const version: PublicationVersion = {
-    sourcesSha256: publicationSourcesSha256(documents),
+    sourcesSha256: publicationSourcesSha256(documents, protocolVersion),
     ...(config.oratlas.versionLabel ? { label: config.oratlas.versionLabel } : {}),
   };
 
@@ -321,8 +347,7 @@ export function exportProject(options: ExportOptions = {}): ExportResult {
     );
   }
 
-  const manifest: OratlasManifest = {
-    schemaVersion: MANIFEST_SCHEMA_VERSION,
+  const commonManifest = {
     generator: { name: PACKAGE_NAME, version: PACKAGE_VERSION },
     publication: {
       ...(publicationId ? { id: publicationId } : {}),
@@ -344,7 +369,25 @@ export function exportProject(options: ExportOptions = {}): ExportResult {
     ...(config.oratlas.reviewManifest
       ? { oratlas: { reviewManifest: config.oratlas.reviewManifest } }
       : {}),
-  };
+  } as const;
+
+  let manifest: OratlasManifest;
+  if (protocolVersion === LEGACY_MANIFEST_SCHEMA_VERSION) {
+    manifest = {
+      schemaVersion: LEGACY_MANIFEST_SCHEMA_VERSION,
+      ...commonManifest,
+    } satisfies OratlasManifestV020;
+  } else {
+    const contributors =
+      config.oratlas.contributors ??
+      contributorsFromMyst(config.myst.authors, config.myst.affiliations);
+    manifest = {
+      schemaVersion: MANIFEST_SCHEMA_VERSION,
+      ...commonManifest,
+      ...(contributors === undefined ? {} : { contributors }),
+      ...(config.oratlas.production === undefined ? {} : { production: config.oratlas.production }),
+    } satisfies OratlasManifestV030;
+  }
 
   const validated = oratlasManifestSchema.safeParse(manifest);
   if (!validated.success) {

@@ -60,7 +60,7 @@ describe("published JSON Schemas", () => {
     expect(validateManifest({})).toBe(false);
     expect(
       validateManifest({
-        schemaVersion: "0.3.0",
+        schemaVersion: "0.4.0",
         generator: { name: "x", version: "1" },
         publication: { version: { sourcesSha256: "0".repeat(64) } },
         adapter: { type: "myst", xref: "myst.xref.json" },
