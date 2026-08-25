@@ -1,6 +1,6 @@
 {
   "name": "@neuronautix/myst",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Portable MyST <-> ORAtlas interoperability adapter: declare scientific claims in MyST source and export deterministic, machine-readable federation artifacts.",
   "keywords": [
     "myst",
@@ -46,6 +46,7 @@
   "files": [
     "dist",
     "schemas",
+    "protocol",
     "SPEC.md",
     "README.md",
     "LICENSE"
@@ -71,6 +72,7 @@
   },
   "dependencies": {
     "myst-common": "^1.10.0",
+    "myst-frontmatter": "1.10.0",
     "myst-parser": "^1.7.3",
     "vfile": "^5.3.7",
     "yaml": "^2.6.0",

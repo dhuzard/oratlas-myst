@@ -87,7 +87,7 @@ describe("publication version", () => {
     expect(publicationSourcesSha256(documents)).toBe(
       sha256(
         canonicalJson({
-          schemaVersion: "0.2.0",
+          schemaVersion: "0.3.0",
           documents: [{ path: "index.md", sha256: sha256("x") }],
         }),
       ),

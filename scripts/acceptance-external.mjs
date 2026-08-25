@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Acceptance criterion for the frozen v0.2 protocol.
+ * External-consumer acceptance for package 0.3.0 and manifest protocol 0.3.0.
  *
  * Proves the whole chain from the point of view of an author who has never
  * seen this repository:
@@ -78,6 +78,10 @@ try {
       "project:",
       "  id: external-review",
       "  title: An entirely external review",
+      "  authors:",
+      "    - id: external-author",
+      "      name: External Author",
+      "      orcid: 0000-0002-1825-0097",
       "  plugins:",
       "    - node_modules/@neuronautix/myst/dist/oratlas-myst.mjs",
       "  static_files:",
@@ -90,7 +94,25 @@ try {
       "",
     ].join("\n"),
   );
-  write("oratlas.yml", "canonical_url: https://external.example.org/review/\n");
+  write(
+    "oratlas.yml",
+    [
+      "canonical_url: https://external.example.org/review/",
+      "production:",
+      "  mode: ai-assisted",
+      "  actors:",
+      "    - id: assistant",
+      "      kind: ai-system",
+      "      name: Example Assistant",
+      "      model: example-model",
+      "      activities: [drafting]",
+      "    - id: external-editor",
+      "      kind: person",
+      "      name: External Author",
+      "      activities: [editing, reviewing]",
+      "",
+    ].join("\n"),
+  );
   write(
     "index.md",
     [
@@ -169,10 +191,23 @@ try {
       .map((line) => JSON.parse(line));
 
     const checks = [
-      ["manifest schemaVersion is 0.2.0", manifest.schemaVersion === "0.2.0"],
+      ["manifest schemaVersion is 0.3.0", manifest.schemaVersion === "0.3.0"],
       [
-        "generator identifies @neuronautix/myst 0.2.1",
-        manifest.generator?.name === "@neuronautix/myst" && manifest.generator?.version === "0.2.1",
+        "generator identifies @neuronautix/myst 0.3.0",
+        manifest.generator?.name === "@neuronautix/myst" && manifest.generator?.version === "0.3.0",
+      ],
+      [
+        "standard MyST author maps to a scholarly contributor",
+        manifest.contributors?.length === 1 &&
+          manifest.contributors[0]?.sourceContributorKey === "external-author" &&
+          manifest.contributors[0]?.kind === "person" &&
+          manifest.contributors[0]?.roles?.includes("author"),
+      ],
+      [
+        "explicit production remains source-declared and separate",
+        manifest.production?.strength === "source-declared" &&
+          manifest.production?.mode === "ai-assisted" &&
+          manifest.production?.actors?.length === 2,
       ],
       ["adapter type is myst", manifest.adapter?.type === "myst"],
       [

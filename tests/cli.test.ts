@@ -59,7 +59,7 @@ describe("argument parsing", () => {
 
 describe("oratlas-myst CLI", () => {
   it("prints usage and its version", () => {
-    expect(runCli(["--version"]).stdout.trim()).toBe("0.2.1");
+    expect(runCli(["--version"]).stdout.trim()).toBe("0.3.0");
     const help = runCli(["--help"]);
     expect(help.status).toBe(0);
     expect(help.stdout).toContain("oratlas-myst <command>");
@@ -108,7 +108,7 @@ describe("oratlas-myst CLI", () => {
     const root = makeProject({ "index.md": `# I\n\n${claim("only", "A statement.")}` });
     const result = runCli(["export", "--project", root, "--no-write", "--json"]);
     const parsed = JSON.parse(result.stdout);
-    expect(parsed.manifest.schemaVersion).toBe("0.2.0");
+    expect(parsed.manifest.schemaVersion).toBe("0.3.0");
     expect(parsed.claims).toHaveLength(1);
     expect(parsed.written).toBe(false);
   });

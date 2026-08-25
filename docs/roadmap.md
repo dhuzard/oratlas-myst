@@ -1,7 +1,22 @@
 # Roadmap
 
-Everything past v0.2 is **planned, not implemented**. Nothing in this repository does any of it
-today, and no claim in the README, SPEC or generated artifacts implies otherwise.
+Schema 0.3 is implemented as the next additive manifest protocol. Future items beyond the
+explicit contributor and production-provenance scope below remain proposals only.
+
+---
+
+## v0.3 — contributor and production declarations (release candidate)
+
+Implemented in package `0.3.0`, without a tag or publication:
+
+- optional ordered exact-version scholarly contributor declarations;
+- deterministic default mapping from standard MyST project authors;
+- optional explicit source-declared production provenance;
+- permanent 0.2 acceptance and an explicit legacy export selection;
+- no change to certification, TRUST, claim records, or mutable graph state.
+
+Scholarly credit, production provenance, and the MyST adapter are independent. Production is
+never inferred and its mode is never a quality signal.
 
 ---
 
@@ -13,7 +28,7 @@ cheap to fix while nothing consumed the schema, and expensive after.
 
 ---
 
-## v0.2 — frozen candidate integration contract (this release)
+## v0.2 — frozen legacy-compatible integration contract
 
 **Schema `0.2.0` is frozen.** It is the pinned contract ORAtlas implements against, and it does
 not move while that integration is built. Concretely, under `0.2.0`:
